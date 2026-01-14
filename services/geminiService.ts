@@ -1,10 +1,17 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Flock, AnalysisResult } from '../types';
 
 // Initialize Gemini Client
 // In a real app, ensure this is handled securely. For this demo, we assume process.env.API_KEY is available.
-const apiKey = process.env.API_KEY || '';
+const getApiKey = () => {
+  try {
+    return (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : '';
+  } catch (e) {
+    return '';
+  }
+};
+
+const apiKey = getApiKey();
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 export const analyzeFlockPerformance = async (flock: Flock): Promise<AnalysisResult> => {
