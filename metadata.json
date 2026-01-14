@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Awra ERP",
+  "description": "A unified SaaS ERP for commercial poultry farms integrating biological asset management and business operations.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
