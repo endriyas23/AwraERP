@@ -8,7 +8,8 @@ import {
   BirdType,
   InventoryCategory,
   AnalysisResult,
-  FlockStatus
+  FlockStatus,
+  Transaction
 } from '../types';
 import { 
   ArrowLeft, 
@@ -35,7 +36,9 @@ import {
   MousePointer2,
   Edit,
   Check,
-  ListFilter
+  ListFilter,
+  ArrowUpRight,
+  ArrowDownRight
 } from 'lucide-react';
 import EggProductionModule from './EggProductionModule';
 import { analyzeFlockPerformance } from '../services/geminiService';
@@ -44,6 +47,7 @@ interface FlockDetailProps {
   flock: Flock;
   inventoryItems: InventoryItem[];
   customers: Customer[];
+  transactions: Transaction[];
   onAddOrder: (order: SalesOrder) => void;
   onBack: () => void;
   onUpdateFlock: (flock: Flock) => void;
@@ -345,6 +349,7 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
   flock,
   inventoryItems,
   customers,
+  transactions,
   onAddOrder,
   onBack,
   onUpdateFlock,
@@ -385,6 +390,30 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
     return Math.max(0, diffDays) + (flock.initialAgeDays || 0);
   }, [flock.startDate, flock.initialAgeDays]);
+
+  // Financial Metrics Calculation
+  const financialMetrics = useMemo(() => {
+    const flockTxs = transactions.filter(t => t.flockId === flock.id);
+    
+    let totalRevenue = 0;
+    let totalExpenses = 0;
+
+    flockTxs.forEach(t => {
+      if (t.type === 'INCOME') {
+        totalRevenue += t.amount;
+      } else if (t.type === 'EXPENSE') {
+        totalExpenses += t.amount;
+      }
+    });
+
+    const netProfit = totalRevenue - totalExpenses;
+    
+    return {
+      totalRevenue,
+      totalExpenses,
+      netProfit
+    };
+  }, [transactions, flock.id]);
 
   // Log Form State
   const [logFormData, setLogFormData] = useState<{
@@ -732,9 +761,14 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
                      <p className="text-xs text-red-500 mt-1">{flock.initialCount - flock.currentCount} mortality total</p>
                   </div>
                   <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Current Age</p>
-                     <h3 className="text-2xl font-bold text-slate-900 mt-1">{flockAge} Days</h3>
-                     <p className="text-xs text-slate-400 mt-1">Week {Math.floor(flockAge / 7)}</p>
+                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Estimated Profit/Loss</p>
+                     <h3 className={`text-2xl font-bold mt-1 ${financialMetrics.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        ${financialMetrics.netProfit.toLocaleString()}
+                     </h3>
+                     <div className="flex justify-between items-center text-xs mt-1 text-slate-500">
+                        <span className="flex items-center gap-1 text-green-600"><ArrowUpRight size={10}/> ${financialMetrics.totalRevenue.toLocaleString()}</span>
+                        <span className="flex items-center gap-1 text-red-600"><ArrowDownRight size={10}/> ${financialMetrics.totalExpenses.toLocaleString()}</span>
+                     </div>
                   </div>
                   <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Feed Consumed</p>

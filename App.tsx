@@ -539,6 +539,7 @@ const App: React.FC = () => {
             flock={selectedFlock} 
             inventoryItems={inventoryItems}
             customers={customers}
+            transactions={transactions}
             onAddOrder={handleAddOrder}
             onBack={() => handleNavigate('FLOCK_LIST')}
             onUpdateFlock={handleUpdateFlock}
