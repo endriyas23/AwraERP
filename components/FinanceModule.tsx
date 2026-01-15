@@ -6,7 +6,8 @@ import {
   SalesOrder,
   ViewState,
   InventoryItem,
-  FarmProfile
+  FarmProfile,
+  AnalysisResult
 } from '../types';
 import { 
   DollarSign, 
@@ -17,36 +18,40 @@ import {
   Filter, 
   Download, 
   Plus, 
-  CreditCard,
-  FileText,
-  ArrowUpRight,
-  ArrowDownRight,
-  Calculator,
-  X,
-  Save,
-  BarChart3,
-  Layers,
-  Percent,
-  Users,
-  Zap,
-  Wheat,
-  Pill,
-  Wrench,
-  Truck,
-  ArrowUpDown,
-  CalendarRange,
-  Activity,
-  Wallet,
-  CheckCircle2,
-  Clock,
-  Edit,
-  Trash2,
-  AlertTriangle,
-  Landmark,
-  FileSpreadsheet,
-  Scale,
-  ShoppingBag
+  CreditCard, 
+  FileText, 
+  ArrowUpRight, 
+  ArrowDownRight, 
+  Calculator, 
+  X, 
+  Save, 
+  BarChart3, 
+  Layers, 
+  Percent, 
+  Users, 
+  Zap, 
+  Wheat, 
+  Pill, 
+  Wrench, 
+  Truck, 
+  ArrowUpDown, 
+  CalendarRange, 
+  Activity, 
+  Wallet, 
+  CheckCircle2, 
+  Clock, 
+  Edit, 
+  Trash2, 
+  AlertTriangle, 
+  Landmark, 
+  FileSpreadsheet, 
+  Scale, 
+  ShoppingBag,
+  BrainCircuit,
+  Sparkles,
+  Loader2
 } from 'lucide-react';
+import { analyzeFinancialHealth } from '../services/geminiService';
 
 interface FinanceModuleProps {
   transactions: Transaction[];
@@ -73,7 +78,7 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({
   onUpdateOrder,
   onNavigate
 }) => {
-  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'TRANSACTIONS' | 'STATEMENTS' | 'TAX'>('OVERVIEW');
+  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'TRANSACTIONS' | 'STATEMENTS' | 'TAX' | 'AI'>('OVERVIEW');
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [editingTxId, setEditingTxId] = useState<string | null>(null);
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
@@ -85,6 +90,10 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({
 
   // P&L Dashboard State
   const [reportTimeRange, setReportTimeRange] = useState<'30D' | 'MTD' | 'YTD' | 'ALL'>('YTD');
+
+  // AI State
+  const [aiAnalysis, setAiAnalysis] = useState<AnalysisResult | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // New Transaction Form
   const [txForm, setTxForm] = useState<Partial<Transaction> & { vatRate: number, whtRate: number, status: 'PENDING' | 'COMPLETED' }>({
@@ -346,6 +355,17 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({
     document.body.removeChild(link);
   };
 
+  // AI Analysis Handler
+  const handleRunAiAnalysis = async () => {
+    setIsAnalyzing(true);
+    // Use reportData (filtered by date) or all transactions?
+    // Using filteredTransactions respects the current view filters, which is intuitive.
+    // If no filter is applied, it uses all.
+    const result = await analyzeFinancialHealth(filteredTransactions);
+    setAiAnalysis(result);
+    setIsAnalyzing(false);
+  };
+
   // --- Render Sections (unchanged sections omitted for brevity but included in output logic) ---
   const renderSummaryCards = () => (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
@@ -602,6 +622,12 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({
              className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'TAX' ? 'bg-primary-50 text-primary-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
            >
              <Landmark size={16} /> Tax
+           </button>
+           <button 
+             onClick={() => setActiveTab('AI')}
+             className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'AI' ? 'bg-purple-50 text-purple-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+           >
+             <BrainCircuit size={16} /> AI Analyst
            </button>
         </div>
       </div>
@@ -866,7 +892,83 @@ const FinanceModule: React.FC<FinanceModuleProps> = ({
          </div>
       )}
 
-      {/* Other tabs remain unchanged in logic but need to be included in full file output if I were outputting the whole file, but I am outputting the whole file so... */}
+      {activeTab === 'AI' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+           <div className="bg-gradient-to-br from-purple-700 to-indigo-800 rounded-xl p-8 text-white shadow-xl">
+              <div className="flex flex-col md:flex-row gap-6 items-start md:items-center justify-between">
+                 <div className="flex items-start gap-4">
+                    <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm shadow-inner">
+                       <BrainCircuit size={32} />
+                    </div>
+                    <div>
+                       <h2 className="text-2xl font-bold">AI Financial Analyst</h2>
+                       <p className="text-purple-100 mt-1 max-w-xl text-sm leading-relaxed opacity-90">
+                          Leverage advanced AI to audit your ledger, identify spending anomalies, and discover cost-saving opportunities tailored to poultry farming.
+                       </p>
+                    </div>
+                 </div>
+                 <button 
+                   onClick={handleRunAiAnalysis}
+                   disabled={isAnalyzing}
+                   className="bg-white text-purple-700 px-6 py-3 rounded-lg font-bold shadow-lg hover:shadow-xl transition-all flex items-center gap-2 hover:bg-purple-50 disabled:opacity-70 disabled:cursor-not-allowed"
+                 >
+                    {isAnalyzing ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                    {isAnalyzing ? 'Analyzing Ledger...' : 'Generate Insights'}
+                 </button>
+              </div>
+           </div>
+
+           {aiAnalysis && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4 duration-500">
+                 {/* Analysis Summary */}
+                 <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-4 pb-4 border-b border-slate-100">
+                       <FileText size={20} className="text-slate-500" />
+                       <h3 className="font-bold text-slate-800">Executive Summary</h3>
+                    </div>
+                    <div className="prose prose-sm text-slate-600 max-w-none">
+                       {aiAnalysis.analysis.split('\n').map((line, i) => (
+                          <p key={i} className="mb-2">{line}</p>
+                       ))}
+                    </div>
+                 </div>
+
+                 {/* Recommendations & Risk */}
+                 <div className="space-y-6">
+                    <div className={`p-6 rounded-xl border flex flex-col items-center justify-center text-center shadow-sm ${
+                        aiAnalysis.alertLevel === 'HIGH' ? 'bg-red-50 border-red-200 text-red-800' :
+                        aiAnalysis.alertLevel === 'MEDIUM' ? 'bg-orange-50 border-orange-200 text-orange-800' :
+                        'bg-green-50 border-green-200 text-green-800'
+                    }`}>
+                        <div className={`p-3 rounded-full mb-3 ${
+                            aiAnalysis.alertLevel === 'HIGH' ? 'bg-red-100' :
+                            aiAnalysis.alertLevel === 'MEDIUM' ? 'bg-orange-100' : 'bg-green-100'
+                        }`}>
+                            <Activity size={24} />
+                        </div>
+                        <h4 className="font-bold text-lg">Financial Risk Level</h4>
+                        <p className="text-2xl font-black mt-1">{aiAnalysis.alertLevel}</p>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                       <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                          <CheckCircle2 size={18} className="text-green-600" /> Recommendations
+                       </h3>
+                       <ul className="space-y-3">
+                          {aiAnalysis.recommendations.map((rec, i) => (
+                             <li key={i} className="flex gap-3 text-sm text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                <span className="font-bold text-slate-400">{i+1}.</span>
+                                {rec}
+                             </li>
+                          ))}
+                       </ul>
+                    </div>
+                 </div>
+              </div>
+           )}
+        </div>
+      )}
+
       {activeTab === 'STATEMENTS' && renderStatements()}
       {activeTab === 'TAX' && renderTaxCompliance()}
 

@@ -56,6 +56,9 @@ const Inventory: React.FC<InventoryProps> = ({
   const [managingItem, setManagingItem] = useState<InventoryItem | null>(null);
   const [activeManageTab, setActiveManageTab] = useState<'INFO' | 'MAINTENANCE' | 'USAGE'>('INFO');
   
+  // Transaction Checkbox State
+  const [recordExpense, setRecordExpense] = useState(true);
+
   const [maintForm, setMaintForm] = useState<Partial<MaintenanceLog>>({
     date: new Date().toISOString().split('T')[0],
     type: 'Preventive',
@@ -119,6 +122,7 @@ const Inventory: React.FC<InventoryProps> = ({
       warrantyExpiry: ''
     });
     setEditingId(null);
+    setRecordExpense(true);
   };
 
   const handleOpenAdd = () => {
@@ -129,8 +133,29 @@ const Inventory: React.FC<InventoryProps> = ({
   const handleOpenEdit = (item: InventoryItem) => {
     setEditingId(item.id);
     setNewItemData({ ...item });
+    setRecordExpense(true);
     setIsModalOpen(true);
   };
+
+  // Calculate expense details for preview
+  const expensePreview = useMemo(() => {
+    const currentQty = Number(newItemData.quantity) || 0;
+    const oldItem = editingId ? items.find(i => i.id === editingId) : null;
+    const oldQty = oldItem ? oldItem.quantity : 0;
+    const diff = currentQty - oldQty;
+    const cost = Number(newItemData.costPerUnit) || 0;
+
+    if (diff <= 0 || cost <= 0) return null;
+
+    const subTotal = diff * cost;
+    const vatRate = Number(newItemData.vatRate) || 0;
+    const whtRate = Number(newItemData.whtRate) || 0;
+    const vatAmount = subTotal * (vatRate / 100);
+    const whtAmount = subTotal * (whtRate / 100);
+    const totalAmount = subTotal + vatAmount - whtAmount;
+
+    return { diff, subTotal, vatAmount, whtAmount, totalAmount };
+  }, [newItemData.quantity, newItemData.costPerUnit, newItemData.vatRate, newItemData.whtRate, editingId, items]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,57 +182,36 @@ const Inventory: React.FC<InventoryProps> = ({
       nextMaintenanceDate: editingId ? items.find(i => i.id === editingId)?.nextMaintenanceDate : undefined
     };
 
-    // --- Financial Integration Logic ---
-    const createTransaction = (qty: number, isRestock: boolean) => {
-       const subTotal = qty * item.costPerUnit;
-       if (subTotal <= 0) return;
+    // --- Financial Integration Logic (Restock) ---
+    if (recordExpense && expensePreview) {
+        // Determine Transaction Category based on Inventory Category
+        let txCategory = 'Other';
+        if (item.category === InventoryCategory.FEED) txCategory = 'Feed';
+        else if (item.category === InventoryCategory.MEDICINE) txCategory = 'Medicine';
+        else if (item.category === InventoryCategory.EQUIPMENT) txCategory = 'Equipment';
 
-       const vatAmount = subTotal * (item.vatRate || 0) / 100;
-       const whtAmount = subTotal * (item.whtRate || 0) / 100;
-       // For Expenses: Amount = Subtotal + VAT (paid) - WHT (withheld)
-       const totalAmount = subTotal + vatAmount - whtAmount;
+        const transaction: Transaction = {
+            id: `tx-inv-${Date.now()}`,
+            date: new Date().toISOString().split('T')[0],
+            type: 'EXPENSE',
+            category: txCategory,
+            amount: expensePreview.totalAmount,
+            subTotal: expensePreview.subTotal,
+            vatAmount: expensePreview.vatAmount,
+            whtAmount: expensePreview.whtAmount,
+            description: `${editingId ? 'Restock' : 'Initial Purchase'}: ${item.name} (+${expensePreview.diff.toLocaleString()} ${item.unit})`,
+            referenceId: item.id // Link to the inventory item ID
+        };
 
-       // Map Inventory Category to Finance Category
-       let financeCat = 'Other';
-       if (item.category === InventoryCategory.FEED) financeCat = 'Feed';
-       else if (item.category === InventoryCategory.MEDICINE) financeCat = 'Medicine';
-       else if (item.category === InventoryCategory.EQUIPMENT) financeCat = 'Equipment';
-
-       const transaction: Transaction = {
-          id: `tx-inv-${Date.now()}`,
-          date: new Date().toISOString().split('T')[0],
-          type: 'EXPENSE',
-          category: financeCat,
-          amount: totalAmount,
-          subTotal: subTotal,
-          vatAmount: vatAmount,
-          whtAmount: whtAmount,
-          description: `${isRestock ? 'Restock' : 'Initial Stock'}: ${item.name} (+${qty} ${item.unit})`,
-       };
-
-       onAddTransaction(transaction);
-    };
+        onAddTransaction(transaction);
+    }
 
     if (editingId) {
-      // Check for stock increase (Purchase)
-      const oldItem = items.find(i => i.id === editingId);
-      if (oldItem && item.quantity > oldItem.quantity && item.costPerUnit > 0) {
-         const diff = item.quantity - oldItem.quantity;
-         // For updates (restocking), we still ask for confirmation as it might be a correction
-         if(window.confirm(`Detected stock increase of ${diff} ${item.unit}.\n\nDo you want to record a purchase transaction of $${(diff * item.costPerUnit).toFixed(2)} in Finance?`)) {
-            createTransaction(diff, true);
-         }
-      }
       onUpdateItem(item);
     } else {
-      // New Item creation - AUTOMATIC TRANSACTION CREATION
       onAddItem(item);
-      
-      if (item.quantity > 0 && item.costPerUnit > 0) {
-         // Automatically create transaction for initial stock without prompt
-         createTransaction(item.quantity, false);
-      }
     }
+    
     setIsModalOpen(false);
     resetForm();
   };
@@ -254,7 +258,7 @@ const Inventory: React.FC<InventoryProps> = ({
           category: 'Equipment Maintenance',
           amount: newLog.cost,
           description: `Maintenance: ${managingItem.name} - ${newLog.type}`,
-          subTotal: newLog.cost // Assuming net
+          subTotal: newLog.cost // Assuming net for simple maintenance
         });
       }
     }
@@ -700,6 +704,50 @@ const Inventory: React.FC<InventoryProps> = ({
                        className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 resize-none"
                      />
                   </div>
+
+                  {/* Expense Preview Panel */}
+                  {expensePreview && (
+                    <div className="bg-green-50 p-4 rounded-lg border border-green-200 mt-2">
+                        <div className="flex justify-between items-center mb-3">
+                            <label className="flex items-center gap-2 text-sm font-bold text-green-900 cursor-pointer select-none">
+                                <input 
+                                type="checkbox" 
+                                checked={recordExpense}
+                                onChange={e => setRecordExpense(e.target.checked)}
+                                className="w-4 h-4 text-green-600 rounded focus:ring-green-500 cursor-pointer"
+                                />
+                                Record Expense Transaction
+                            </label>
+                            <span className="text-xs font-bold text-green-800 bg-green-200/50 px-2 py-1 rounded border border-green-200">
+                                Total: ${expensePreview.totalAmount.toFixed(2)}
+                            </span>
+                        </div>
+                        
+                        {recordExpense && (
+                            <div className="text-xs space-y-1 pl-6 text-green-800 opacity-90 border-l-2 border-green-300">
+                                <div className="flex justify-between">
+                                    <span>Added Stock Cost:</span>
+                                    <span>${expensePreview.subTotal.toFixed(2)}</span>
+                                </div>
+                                {expensePreview.vatAmount > 0 && (
+                                    <div className="flex justify-between">
+                                        <span>VAT:</span>
+                                        <span>+${expensePreview.vatAmount.toFixed(2)}</span>
+                                    </div>
+                                )}
+                                {expensePreview.whtAmount > 0 && (
+                                    <div className="flex justify-between">
+                                        <span>WHT:</span>
+                                        <span>-${expensePreview.whtAmount.toFixed(2)}</span>
+                                    </div>
+                                )}
+                                <p className="mt-1 text-[10px] italic opacity-75">
+                                    A "Restock" expense will be added to the Finance module.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                  )}
 
                   <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
                      <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg font-medium">Cancel</button>

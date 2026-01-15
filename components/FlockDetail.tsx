@@ -19,7 +19,7 @@ import {
   AlertTriangle, 
   Plus, 
   Save, 
-  X,
+  X, 
   FileText,
   BrainCircuit,
   Egg,
@@ -38,10 +38,15 @@ import {
   Check,
   ListFilter,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  Loader2,
+  Stethoscope,
+  Wheat,
+  PackageCheck,
+  Package
 } from 'lucide-react';
 import EggProductionModule from './EggProductionModule';
-import { analyzeFlockPerformance } from '../services/geminiService';
+import { analyzeFlockPerformance, diagnoseBirdHealth } from '../services/geminiService';
 
 interface FlockDetailProps {
   flock: Flock;
@@ -66,8 +71,8 @@ const PerformanceChart = ({
   color = '#3b82f6', 
   unit = '', 
   title, 
-  height = 300,
-  showArea = true,
+  height = 250,
+  type = 'line',
   showMovingAverage = false
 }: { 
   data: any[], 
@@ -77,23 +82,23 @@ const PerformanceChart = ({
   unit?: string, 
   title: string,
   height?: number,
-  showArea?: boolean,
+  type?: 'line' | 'bar' | 'area',
   showMovingAverage?: boolean
 }) => {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Dimensions
-  const padding = { top: 20, right: 30, bottom: 40, left: 40 };
-  const width = 1000; // Internal coordinate system width
-  const chartHeight = height; // Internal coordinate system height
+  const padding = { top: 20, right: 30, bottom: 30, left: 40 };
+  const width = 800; // Internal coordinate system width
+  const chartHeight = height; 
   const chartWidth = width;
 
   const safeData = data || [];
 
   // Scaling
   const values = safeData.map(d => Number(d[dataKey] || 0));
-  const maxVal = Math.max(...values) * 1.1 || 10; // Add 10% headroom
+  const maxVal = Math.max(...values, 1) * 1.1;
   
   const getX = (index: number) => {
     return padding.left + (index / (safeData.length - 1 || 1)) * (chartWidth - padding.left - padding.right);
@@ -111,61 +116,38 @@ const PerformanceChart = ({
     originalData: d
   }));
 
-  // Determine Moving Average Period based on data density
-  const maPeriod = useMemo(() => {
-    if (!showMovingAverage) return 0;
-    if (safeData.length >= 30) return 7; // Weekly avg for daily data
-    if (safeData.length >= 10) return 3; // 3-point smooth for sparser data
-    return 0;
-  }, [safeData.length, showMovingAverage]);
-
-  // Calculate Moving Average Points
+  // Moving Average
+  const maPeriod = showMovingAverage ? (safeData.length >= 20 ? 7 : 3) : 0;
   const maPoints = useMemo(() => {
     if (maPeriod === 0) return [];
-    
     return points.map((p, i) => {
         if (i < maPeriod - 1) return null;
         const subset = points.slice(i - maPeriod + 1, i + 1);
         const avg = subset.reduce((sum, pt) => sum + pt.value, 0) / maPeriod;
-        return {
-            x: p.x,
-            y: getY(avg),
-            value: avg
-        };
+        return { x: p.x, y: getY(avg), value: avg };
     }).filter((p): p is {x: number, y: number, value: number} => p !== null);
-  }, [points, maPeriod]); // getY is stable enough in render or we assume stability
+  }, [points, maPeriod]); 
 
-  // Generate Smooth Path (Catmull-Rom like Bezier)
-  const generatePath = (pts: typeof points, close: boolean = false) => {
+  // Path Generation
+  const generateLinePath = (pts: typeof points, close: boolean = false) => {
     if (pts.length === 0) return "";
-    if (pts.length === 1) return `M ${padding.left} ${getY(pts[0].value)} L ${chartWidth - padding.right} ${getY(pts[0].value)}`;
-
     let d = `M ${pts[0].x} ${pts[0].y}`;
-
     for (let i = 0; i < pts.length - 1; i++) {
       const p0 = pts[i === 0 ? 0 : i - 1];
       const p1 = pts[i];
       const p2 = pts[i + 1];
       const p3 = pts[i + 2] || p2;
-
       const cp1x = p1.x + (p2.x - p0.x) / 6;
       const cp1y = p1.y + (p2.y - p0.y) / 6;
       const cp2x = p2.x - (p3.x - p1.x) / 6;
       const cp2y = p2.y - (p3.y - p1.y) / 6;
-
       d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
     }
-
     if (close) {
       d += ` L ${pts[pts.length - 1].x} ${chartHeight - padding.bottom} L ${pts[0].x} ${chartHeight - padding.bottom} Z`;
     }
-
     return d;
   };
-
-  const linePath = generatePath(points);
-  const areaPath = generatePath(points, true);
-  const maPath = generatePath(maPoints as any);
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!containerRef.current) return;
@@ -173,177 +155,110 @@ const PerformanceChart = ({
     const x = e.clientX - rect.left;
     const relX = (x / rect.width) * chartWidth;
     
-    // Find nearest point
     let minDist = Infinity;
     let nearestIdx = 0;
-
     points.forEach((p, i) => {
       const dist = Math.abs(p.x - relX);
-      if (dist < minDist) {
-        minDist = dist;
-        nearestIdx = i;
-      }
+      if (dist < minDist) { minDist = dist; nearestIdx = i; }
     });
-
     setHoverIndex(nearestIdx);
   };
 
   const activePoint = hoverIndex !== null ? points[hoverIndex] : null;
 
-  if (!data || data.length === 0) {
-    return (
-      <div className={`w-full bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-center text-slate-400 text-sm`} style={{ height }}>
-         Not enough data to display {title}.
-      </div>
-    );
-  }
+  if (safeData.length === 0) return <div className="h-full flex items-center justify-center text-slate-400 text-sm">No data available</div>;
 
   return (
-    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group">
-      <div className="flex justify-between items-center mb-4">
+    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group h-full flex flex-col">
+      <div className="flex justify-between items-center mb-4 shrink-0">
         <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
           {title}
         </h4>
-        <div className="flex items-center gap-3">
-            {showMovingAverage && maPeriod > 0 && (
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-medium">
-                    <div className="w-3 h-0 border-t-2 border-dashed border-slate-400"></div>
-                    {maPeriod}-Period Avg
-                </div>
-            )}
-            <div className="text-xs font-bold px-2 py-1 bg-slate-100 rounded text-slate-600">
-              Max: {Math.max(...values).toLocaleString(undefined, { maximumFractionDigits: 1 })} {unit}
-            </div>
+        <div className="text-xs font-bold px-2 py-1 bg-slate-100 rounded text-slate-600">
+           {Math.max(...values).toLocaleString()} {unit} Max
         </div>
       </div>
 
       <div 
         ref={containerRef}
-        className="relative w-full select-none cursor-crosshair"
-        style={{ height }}
+        className="relative w-full flex-1 select-none cursor-crosshair"
+        style={{ minHeight: height }}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setHoverIndex(null)}
       >
         <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-full overflow-visible">
-          <defs>
-            <linearGradient id={`grad-${title}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={color} stopOpacity="0.3" />
-              <stop offset="100%" stopColor={color} stopOpacity="0" />
-            </linearGradient>
-          </defs>
-
-          {/* Grid Lines */}
+          {/* Grid */}
           {[0, 0.25, 0.5, 0.75, 1].map(t => {
             const y = padding.top + t * (chartHeight - padding.top - padding.bottom);
             const val = maxVal * (1 - t);
             return (
               <g key={t}>
-                <line 
-                  x1={padding.left} 
-                  y1={y} 
-                  x2={chartWidth - padding.right} 
-                  y2={y} 
-                  stroke="#f1f5f9" 
-                  strokeWidth="1" 
-                  strokeDasharray="4 4"
-                />
-                <text x={padding.left - 10} y={y + 4} textAnchor="end" className="text-[10px] fill-slate-400 font-medium">
-                  {val >= 1000 ? `${(val/1000).toFixed(1)}k` : val.toFixed(1)}
-                </text>
+                <line x1={padding.left} y1={y} x2={chartWidth - padding.right} y2={y} stroke="#f1f5f9" strokeWidth="1" strokeDasharray="4 4" />
+                <text x={padding.left - 8} y={y + 3} textAnchor="end" className="text-[10px] fill-slate-400 font-medium">{val >= 1000 ? `${(val/1000).toFixed(1)}k` : val.toFixed(0)}</text>
               </g>
             );
           })}
 
-          {/* Chart Rendering Logic */}
-          {showArea && <path d={areaPath} fill={`url(#grad-${title})`} />}
-          
-          {/* Main Line */}
-          <path d={linePath} fill="none" stroke={color} strokeWidth={showArea ? "3" : "3"} strokeLinecap="round" strokeLinejoin="round" />
-
-          {/* Moving Average Line */}
-          {showMovingAverage && maPath && (
-             <path d={maPath} fill="none" stroke={color} strokeWidth="2" strokeDasharray="5 5" opacity="0.5" />
+          {/* Visualization Type */}
+          {type === 'bar' ? (
+             points.map((p, i) => {
+                const barWidth = (chartWidth - padding.left - padding.right) / points.length * 0.6;
+                const barHeight = (chartHeight - padding.bottom) - p.y;
+                return (
+                   <rect 
+                     key={i} 
+                     x={p.x - barWidth/2} 
+                     y={p.y} 
+                     width={barWidth} 
+                     height={barHeight} 
+                     fill={color} 
+                     opacity={activePoint === p ? 1 : 0.7}
+                     rx={2}
+                   />
+                );
+             })
+          ) : (
+             <>
+                {type === 'area' && (
+                    <path d={generateLinePath(points, true)} fill={color} fillOpacity="0.1" />
+                )}
+                <path d={generateLinePath(points)} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                {showMovingAverage && maPoints.length > 0 && (
+                    <path d={generateLinePath(maPoints as any)} fill="none" stroke={color} strokeWidth="2" strokeDasharray="4 4" opacity="0.6" />
+                )}
+             </>
           )}
 
-          {/* Render Points if Monthly (Sparse Data) or Hovered */}
-          {(!showArea || activePoint) && points.map((p, i) => (
-             (activePoint === p || !showArea) && (
-               <g key={i}>
-                 {activePoint === p && (
-                   <line 
-                     x1={p.x} y1={padding.top} 
-                     x2={p.x} y2={chartHeight - padding.bottom} 
-                     stroke={color} strokeWidth="1" strokeDasharray="4 4" opacity="0.5" 
-                   />
-                 )}
-                 <circle cx={p.x} cy={p.y} r={activePoint === p ? "6" : "4"} fill="white" stroke={color} strokeWidth="3" />
-               </g>
-             )
-          ))}
+          {/* Hover Indicator */}
+          {activePoint && type !== 'bar' && (
+             <g>
+               <line x1={activePoint.x} y1={padding.top} x2={activePoint.x} y2={chartHeight - padding.bottom} stroke={color} strokeWidth="1" strokeDasharray="4 4" opacity="0.5" />
+               <circle cx={activePoint.x} cy={activePoint.y} r="5" fill="white" stroke={color} strokeWidth="2" />
+             </g>
+          )}
           
-          {/* X Axis Labels (Sparse) */}
+          {/* Axis Labels */}
           {points.length > 0 && points.map((p, i) => {
-             // Show label if it's the first, last, or every nth point depending on density
-             const density = Math.ceil(points.length / 6);
-             if (i % density === 0) {
-                return (
-                   <text key={i} x={p.x} y={chartHeight - 10} textAnchor="middle" className="text-[10px] fill-slate-400 font-medium">
-                      {p.label}
-                   </text>
-                );
+             if (i % Math.ceil(points.length / 6) === 0) {
+                return <text key={i} x={p.x} y={chartHeight - 10} textAnchor="middle" className="text-[10px] fill-slate-400 font-medium">{p.label}</text>;
              }
              return null;
           })}
-
         </svg>
 
-        {/* Tooltip Overlay */}
         {activePoint && (
           <div 
-            className="absolute z-10 pointer-events-none bg-slate-900/95 backdrop-blur-sm text-white text-xs rounded-lg p-3 shadow-xl border border-slate-700 transform -translate-x-1/2 -translate-y-full transition-all duration-75 min-w-[120px]"
-            style={{ 
-              left: `${(activePoint.x / chartWidth) * 100}%`, 
-              top: `${(activePoint.y / chartHeight) * 100}%`,
-              marginTop: '-16px'
-            }}
+            className="absolute z-10 pointer-events-none bg-slate-900/95 text-white text-xs rounded-lg p-2 shadow-xl border border-slate-700 transform -translate-x-1/2 -translate-y-full min-w-[100px] text-center"
+            style={{ left: `${(activePoint.x / chartWidth) * 100}%`, top: `${(activePoint.y / chartHeight) * 100}%`, marginTop: '-12px' }}
           >
-            <div className="text-slate-400 mb-2 font-medium border-b border-slate-700/50 pb-2 flex justify-between items-center gap-4">
-                <span>{activePoint.label}</span>
-                {activePoint.originalData.date && <span className="text-[10px] opacity-70 bg-slate-800 px-1.5 py-0.5 rounded">{activePoint.originalData.date}</span>}
-            </div>
-            
-            <div className="flex justify-between items-center gap-4 text-sm mb-1">
-                <span className="font-medium text-slate-300">Exact Value:</span>
-                <span className="font-bold text-white text-base">{activePoint.value.toLocaleString(undefined, { maximumFractionDigits: 2 })} <span className="text-xs font-normal text-slate-400">{unit}</span></span>
-            </div>
-
-            {/* Show MA in tooltip if enabled and available for this point */}
-            {showMovingAverage && maPeriod > 0 && (
-                (() => {
-                    const idx = points.indexOf(activePoint);
-                    if (idx >= maPeriod - 1) {
-                         const subset = points.slice(idx - maPeriod + 1, idx + 1);
-                         const avg = subset.reduce((sum, pt) => sum + pt.value, 0) / maPeriod;
-                         return (
-                            <div className="flex justify-between items-center gap-4 text-xs mt-1 pt-1 border-t border-slate-700/50 text-slate-400">
-                                <span className="font-medium flex items-center gap-1.5">
-                                    <div className="w-3 h-0 border-t-2 border-dashed border-slate-500"></div>
-                                    Trend ({maPeriod}d):
-                                </span>
-                                <span>{avg.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-                            </div>
-                         );
-                    }
-                    return null;
-                })()
-            )}
+            <div className="font-bold">{activePoint.value.toLocaleString(undefined, { maximumFractionDigits: 1 })} <span className="text-[10px] font-normal opacity-70">{unit}</span></div>
+            <div className="text-[9px] text-slate-400 mt-0.5">{activePoint.originalData.date || activePoint.label}</div>
           </div>
         )}
       </div>
     </div>
   );
 };
-
 
 const FlockDetail: React.FC<FlockDetailProps> = ({
   flock,
@@ -364,6 +279,7 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
   const [logFormError, setLogFormError] = useState<string | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<AnalysisResult | null>(null);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
+  const [isDiagnosing, setIsDiagnosing] = useState(false); // For image diagnosis
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [viewProofUrl, setViewProofUrl] = useState<string | null>(null);
 
@@ -374,47 +290,13 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
     clearCount: false
   });
 
-  // Performance Trend View State
-  const [trendViewMode, setTrendViewMode] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY');
-
-  // Derived state
-  const feedItems = inventoryItems.filter(i => i.category === InventoryCategory.FEED);
+  const feedItems = useMemo(() => {
+    return inventoryItems.filter(i => 
+      i.category === InventoryCategory.FEED && 
+      (!i.targetBirdType || i.targetBirdType === flock.type)
+    );
+  }, [inventoryItems, flock.type]);
   
-  // Calculate Flock Age (Date-based)
-  const flockAge = useMemo(() => {
-    const start = new Date(flock.startDate);
-    const today = new Date();
-    start.setHours(0,0,0,0);
-    today.setHours(0,0,0,0);
-    const diffTime = today.getTime() - start.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    return Math.max(0, diffDays) + (flock.initialAgeDays || 0);
-  }, [flock.startDate, flock.initialAgeDays]);
-
-  // Financial Metrics Calculation
-  const financialMetrics = useMemo(() => {
-    const flockTxs = transactions.filter(t => t.flockId === flock.id);
-    
-    let totalRevenue = 0;
-    let totalExpenses = 0;
-
-    flockTxs.forEach(t => {
-      if (t.type === 'INCOME') {
-        totalRevenue += t.amount;
-      } else if (t.type === 'EXPENSE') {
-        totalExpenses += t.amount;
-      }
-    });
-
-    const netProfit = totalRevenue - totalExpenses;
-    
-    return {
-      totalRevenue,
-      totalExpenses,
-      netProfit
-    };
-  }, [transactions, flock.id]);
-
   // Log Form State
   const [logFormData, setLogFormData] = useState<{
     date: string;
@@ -446,93 +328,75 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
     setActiveTab(initialTab);
   }, [initialTab]);
 
-  // Aggregated Data Calculation for Charts
-  const chartData = useMemo(() => {
+  // --- Advanced Data Processing Engine ---
+  const { chartData, metrics } = useMemo(() => {
     const sortedLogs = [...flock.logs].sort((a, b) => a.day - b.day);
     
-    // Variables for cumulative calculation
-    let cumFeed = 0;
     let cumMortality = 0;
-
-    // Enhance logs with derived metrics
-    const enhancedLogs = sortedLogs.map(log => {
-      cumFeed += log.feedConsumedKg;
-      
-      const currentPop = flock.initialCount - cumMortality; // Birds alive at START of day
-      cumMortality += log.mortality; // Update cumulative mortality for next iteration
-      
-      const birdsEndDay = currentPop - log.mortality;
-      
-      // FCR = Cumulative Feed / Total Live Biomass
-      // Biomass = Current Bird Count * Avg Weight
-      const biomassKg = (birdsEndDay * log.avgWeightG) / 1000;
-      const fcr = biomassKg > 0 ? cumFeed / biomassKg : 0;
-
-      // Mortality Rate (Daily) = (Deaths / Start Population) * 100
-      const mortRate = currentPop > 0 ? (log.mortality / currentPop) * 100 : 0;
-
-      return {
-        ...log,
-        fcr,
-        mortalityRate: mortRate,
-        label: `Day ${log.day}`
-      };
+    
+    // Process Logs
+    const processed = sortedLogs.map(log => {
+        // Population at START of day (before today's mortality)
+        const startOfDayPop = flock.initialCount - cumMortality;
+        
+        // Update cumulative for next day
+        cumMortality += log.mortality;
+        
+        // Metrics
+        const dailyMortalityRate = startOfDayPop > 0 ? (log.mortality / startOfDayPop) * 100 : 0;
+        const cumulativeMortalityRate = flock.initialCount > 0 ? (cumMortality / flock.initialCount) * 100 : 0;
+        const henDayPct = startOfDayPop > 0 ? ((log.eggProduction || 0) / startOfDayPop) * 100 : 0;
+        
+        return {
+            ...log,
+            label: `Day ${log.day}`,
+            startOfDayPop,
+            cumulativeMortality: cumMortality,
+            dailyMortalityRate,
+            cumulativeMortalityRate,
+            henDayPct
+        };
     });
 
-    if (trendViewMode === 'DAILY') {
-        return enhancedLogs;
-    }
+    // Current Snapshot Metrics (Latest Log)
+    const latest = (processed[processed.length - 1] || {}) as any;
+    const last7Days = processed.slice(-7);
+    
+    const currentMetrics = {
+        currentPop: flock.currentCount,
+        dailyProduction: latest.eggProduction || 0,
+        avgWeight: latest.avgWeightG || 0,
+        henDayPct: latest.henDayPct || 0,
+        mortalityRate: latest.cumulativeMortalityRate || 0,
+        avgHenDay7d: last7Days.length > 0 ? last7Days.reduce((a,b) => a + b.henDayPct, 0) / last7Days.length : 0
+    };
 
-    // Grouping Logic for Weekly/Monthly
-    const groupedData = new Map<string, typeof enhancedLogs>();
-
-    enhancedLogs.forEach(log => {
-      const date = new Date(log.date);
-      let key = '';
-      
-      if (trendViewMode === 'WEEKLY') {
-         const start = new Date(flock.startDate);
-         const diff = date.getTime() - start.getTime();
-         const weekNum = Math.floor(diff / (1000 * 60 * 60 * 24 * 7)) + 1;
-         key = `Week ${weekNum}`;
-      } else {
-         key = date.toLocaleString('default', { month: 'short', year: '2-digit' });
-      }
-
-      if (!groupedData.has(key)) {
-          groupedData.set(key, []);
-      }
-      groupedData.get(key)?.push(log);
-    });
-
-    // Aggregate grouped data
-    return Array.from(groupedData.entries()).map(([label, logs]) => {
-       const lastLog = logs[logs.length - 1]; // For cumulative metrics like FCR, date
-       
-       const totalMortality = logs.reduce((sum, l) => sum + l.mortality, 0);
-       const totalEggs = logs.reduce((sum, l) => sum + (l.eggProduction || 0), 0);
-       const avgWeight = logs.reduce((sum, l) => sum + l.avgWeightG, 0) / (logs.length || 1);
-       
-       // Average the daily mortality rates for the period trend
-       const avgMortRate = logs.reduce((sum, l) => sum + l.mortalityRate, 0) / (logs.length || 1);
-
-       return {
-          label,
-          date: lastLog.date,
-          mortality: totalMortality,
-          eggProduction: totalEggs,
-          avgWeightG: avgWeight,
-          fcr: lastLog.fcr, // Use cumulative FCR at end of period
-          mortalityRate: avgMortRate
-       };
-    });
-  }, [flock.logs, flock.startDate, trendViewMode, flock.initialCount]);
+    return { chartData: processed, metrics: currentMetrics };
+  }, [flock]);
 
   const handleRunAnalysis = async () => {
     setIsLoadingAi(true);
     const result = await analyzeFlockPerformance(flock);
     setAiAnalysis(result);
     setIsLoadingAi(false);
+  };
+
+  const handleDiagnoseImage = async () => {
+    if (!logFormData.mortalityImage) return;
+    setIsDiagnosing(true);
+    try {
+        const result = await diagnoseBirdHealth(logFormData.mortalityImage);
+        setLogFormData(prev => ({
+            ...prev,
+            mortalityReason: result.analysis.substring(0, 100) + '...', // Shorten for input
+            notes: (prev.notes + '\n\nAI Diagnosis:\n' + result.analysis + '\n\nRecommendations:\n' + result.recommendations.join(', ')).trim()
+        }));
+    } catch (e) {
+        console.error(e);
+        setLogFormError("Failed to diagnose image.");
+    } finally {
+        setIsDiagnosing(false);
+    }
   };
 
   const handleStatusUpdate = () => {
@@ -559,69 +423,50 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
     e.preventDefault();
     setLogFormError(null);
 
-    // Handle Stock Deduction (Feed)
+    // 1. Inventory Deduction (Feed)
     if (logFormData.selectedFeedId && logFormData.feedConsumedKg > 0) {
         const feedItem = inventoryItems.find(i => i.id === logFormData.selectedFeedId);
         if (feedItem) {
             let deductionAmount = logFormData.feedConsumedKg;
             const isBagUnit = feedItem.unit.toLowerCase().includes('bag');
-            
-            // If inventory is in Bags, convert the consumed Kg to Bags (1 Bag = 50kg)
-            if (isBagUnit) {
-                deductionAmount = logFormData.feedConsumedKg / 50;
-            }
+            if (isBagUnit) deductionAmount = logFormData.feedConsumedKg / 50; // Assuming 50kg bags
 
             if (feedItem.quantity < deductionAmount) {
-                setLogFormError(`Insufficient stock for ${feedItem.name}. Available: ${feedItem.quantity} ${feedItem.unit} (Need ${deductionAmount.toFixed(2)} ${feedItem.unit})`);
+                setLogFormError(`Insufficient stock for ${feedItem.name}.`);
                 return;
             }
-            
-            onUpdateInventory({
-                ...feedItem,
-                quantity: feedItem.quantity - deductionAmount,
-                lastUpdated: new Date().toISOString().split('T')[0]
-            });
+            onUpdateInventory({ ...feedItem, quantity: feedItem.quantity - deductionAmount, lastUpdated: new Date().toISOString().split('T')[0] });
         }
     }
 
-    // Handle Egg Production Inventory Update
-    if (flock.type === BirdType.LAYER && Number(logFormData.eggProduction) > 0) {
-        const produced = Number(logFormData.eggProduction);
-        const damaged = Number(logFormData.eggsDamaged) || 0;
-        const netSaleable = Math.max(0, produced - damaged);
+    // 2. Inventory Addition (Egg Production) - Automated Linking
+    if (flock.type === BirdType.LAYER) {
+        const totalEggs = Number(logFormData.eggProduction);
+        const damaged = Number(logFormData.eggsDamaged);
+        const netStockable = Math.max(0, totalEggs - damaged);
 
-        if (netSaleable > 0) {
-            // Find existing Table Eggs item or create one
+        if (netStockable > 0) {
+            // Find existing 'Table Eggs' or generic 'Eggs' inventory item
             const eggItem = inventoryItems.find(i => 
-                i.name === 'Table Eggs' || 
-                (i.category === InventoryCategory.OTHER && i.name.toLowerCase().includes('egg'))
+                i.name.toLowerCase().includes('table egg') || 
+                (i.name.toLowerCase() === 'eggs' && i.category === InventoryCategory.OTHER)
             );
 
             if (eggItem) {
                 onUpdateInventory({
                     ...eggItem,
-                    quantity: eggItem.quantity + netSaleable,
+                    quantity: eggItem.quantity + netStockable,
                     lastUpdated: new Date().toISOString().split('T')[0]
                 });
             } else {
-                // Auto-create inventory item for eggs if it doesn't exist
-                onAddInventoryItem({
-                    id: `inv-eggs-${Date.now()}`,
-                    name: 'Table Eggs',
-                    category: InventoryCategory.OTHER,
-                    quantity: netSaleable,
-                    unit: 'units',
-                    minLevel: 100, // Default alert level
-                    costPerUnit: 0.15, // Default estimated value
-                    lastUpdated: new Date().toISOString().split('T')[0],
-                    notes: 'Auto-created from daily production logs.'
-                });
+                console.warn("Automated stock update skipped: No 'Table Eggs' inventory item found.");
             }
         }
     }
 
+    // 3. New Log Creation
     const newLog: DailyLog = {
-      day: flock.logs.length + 1, // Sequential
+      day: flock.logs.length + 1,
       date: logFormData.date,
       mortality: Number(logFormData.mortality),
       mortalityReason: logFormData.mortalityReason,
@@ -645,23 +490,16 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
 
     onUpdateFlock(updatedFlock);
     setIsLogModalOpen(false);
-    
     setLogFormData({
         date: new Date().toISOString().split('T')[0],
-        mortality: 0,
-        mortalityReason: '',
-        feedConsumedKg: 0,
-        selectedFeedId: '',
-        waterConsumedL: 0,
-        avgWeightG: 0,
-        eggProduction: 0,
-        eggsDamaged: 0,
-        notes: '',
-        mortalityImage: ''
+        mortality: 0, mortalityReason: '', feedConsumedKg: 0, selectedFeedId: '', waterConsumedL: 0, avgWeightG: 0, eggProduction: 0, eggsDamaged: 0, notes: '', mortalityImage: ''
     });
   };
 
   const recentLogs = [...flock.logs].reverse();
+
+  // Find selected feed item details for display
+  const selectedFeed = inventoryItems.find(i => i.id === logFormData.selectedFeedId);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -685,10 +523,8 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
                     className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 hover:opacity-80 transition-opacity cursor-pointer ${
                         flock.status === 'Active' ? 'bg-green-100 text-green-700 border-green-200' : 
                         flock.status === 'Quarantine' ? 'bg-red-100 text-red-700 border-red-200' :
-                        flock.status === 'Harvested' ? 'bg-slate-100 text-slate-600 border-slate-200' :
-                        'bg-blue-100 text-blue-700 border-blue-200'
+                        'bg-slate-100 text-slate-600 border-slate-200'
                     }`}
-                    title="Change Status"
                  >
                    {flock.status} <Edit size={10} />
                  </button>
@@ -707,7 +543,7 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
               onClick={() => setIsDeleteConfirmOpen(true)}
               className="text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
             >
-              <Trash2 size={16} /> Delete
+              <Trash2 size={16} />
             </button>
             <button 
               onClick={() => setIsLogModalOpen(true)}
@@ -725,20 +561,20 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
               onClick={() => setActiveTab('OVERVIEW')}
               className={`pb-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'OVERVIEW' ? 'border-primary-600 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
             >
-               <Activity size={16} /> Overview
+               <Activity size={16} /> Performance
             </button>
             <button 
               onClick={() => setActiveTab('LOGS')}
               className={`pb-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'LOGS' ? 'border-primary-600 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
             >
-               <FileText size={16} /> Daily Logs
+               <FileText size={16} /> Logs
             </button>
             {flock.type === BirdType.LAYER && (
                 <button 
                   onClick={() => setActiveTab('EGG_PROD')}
                   className={`pb-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'EGG_PROD' ? 'border-primary-600 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                 >
-                   <Egg size={16} /> Production
+                   <Egg size={16} /> Eggs
                 </button>
             )}
             <button 
@@ -754,143 +590,117 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
       <div className="min-h-[400px]">
          {activeTab === 'OVERVIEW' && (
             <div className="space-y-6">
-               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+               {/* KPI Cards */}
+               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Current Population</p>
-                     <h3 className="text-2xl font-bold text-slate-900 mt-1">{flock.currentCount.toLocaleString()}</h3>
-                     <p className="text-xs text-red-500 mt-1">{flock.initialCount - flock.currentCount} mortality total</p>
-                  </div>
-                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Estimated Profit/Loss</p>
-                     <h3 className={`text-2xl font-bold mt-1 ${financialMetrics.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        ${financialMetrics.netProfit.toLocaleString()}
-                     </h3>
-                     <div className="flex justify-between items-center text-xs mt-1 text-slate-500">
-                        <span className="flex items-center gap-1 text-green-600"><ArrowUpRight size={10}/> ${financialMetrics.totalRevenue.toLocaleString()}</span>
-                        <span className="flex items-center gap-1 text-red-600"><ArrowDownRight size={10}/> ${financialMetrics.totalExpenses.toLocaleString()}</span>
-                     </div>
-                  </div>
-                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Feed Consumed</p>
+                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Daily Production</p>
                      <h3 className="text-2xl font-bold text-slate-900 mt-1">
-                        {flock.logs.reduce((acc, l) => acc + (l.feedConsumedKg || 0), 0).toLocaleString()} <span className="text-sm font-medium">kg</span>
-                     </h3>
-                  </div>
-                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">FCR (Est.)</p>
-                     <h3 className="text-2xl font-bold text-blue-600 mt-1">
-                        {flock.logs.length > 0 && flock.logs[flock.logs.length-1].avgWeightG > 0
-                           ? ((flock.logs.reduce((acc, l) => acc + (l.feedConsumedKg || 0), 0) * 1000) / (flock.currentCount * flock.logs[flock.logs.length-1].avgWeightG)).toFixed(2)
-                           : '-'
+                        {flock.type === BirdType.LAYER 
+                            ? `${metrics.dailyProduction.toLocaleString()} eggs` 
+                            : `${metrics.avgWeight.toLocaleString()} g`
                         }
                      </h3>
-                     <p className="text-xs text-slate-400 mt-1">Feed Conversion Ratio</p>
+                     <p className="text-xs text-slate-400 mt-1">Latest log entry</p>
                   </div>
-               </div>
+                  
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        {flock.type === BirdType.LAYER ? 'Hen-Day %' : 'Feed Conversion'}
+                     </p>
+                     <h3 className={`text-2xl font-bold mt-1 ${metrics.henDayPct > 90 ? 'text-green-600' : 'text-blue-600'}`}>
+                        {flock.type === BirdType.LAYER 
+                            ? `${metrics.henDayPct.toFixed(1)}%` 
+                            : '-' // FCR Logic placeholder
+                        }
+                     </h3>
+                     <p className="text-xs text-slate-400 mt-1">
+                        {flock.type === BirdType.LAYER ? `7-Day Avg: ${metrics.avgHenDay7d.toFixed(1)}%` : 'Ratio'}
+                     </p>
+                  </div>
 
-               {/* Quick Actions */}
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
-                     <h3 className="font-bold text-blue-900 mb-2">Health & Veterinary</h3>
-                     <p className="text-sm text-blue-700 mb-4">View medical records, schedule vaccinations, or report health issues for this flock.</p>
-                     <button 
-                       onClick={onViewHealth}
-                       className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                     >
-                        Manage Health
-                     </button>
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Mortality Rate</p>
+                     <h3 className={`text-2xl font-bold mt-1 ${metrics.mortalityRate > 5 ? 'text-red-600' : 'text-slate-900'}`}>
+                        {metrics.mortalityRate.toFixed(2)}%
+                     </h3>
+                     <p className="text-xs text-slate-400 mt-1">Cumulative loss</p>
                   </div>
-                  <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                     <h3 className="font-bold text-slate-900 mb-2">Recent Notes</h3>
-                     <div className="space-y-2 max-h-32 overflow-y-auto">
-                        {flock.logs.slice(-3).reverse().map(log => (
-                           <div key={log.day} className="text-sm text-slate-600 border-l-2 border-slate-300 pl-3">
-                              <span className="font-bold text-xs text-slate-400 block">Day {log.day} ({log.date})</span>
-                              {log.notes || 'No notes.'}
-                           </div>
-                        ))}
-                        {flock.logs.length === 0 && <span className="text-sm text-slate-400 italic">No logs recorded yet.</span>}
+
+                  {/* Feed Availability Widget - New Feature */}
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Feed Available</p>
+                     <div className="mt-2 space-y-1">
+                        {feedItems.length > 0 ? feedItems.slice(0, 2).map(f => (
+                            <div key={f.id} className="flex justify-between items-center text-sm">
+                                <span className="text-slate-600 truncate max-w-[100px]">{f.name}</span>
+                                <span className={`font-bold ${f.quantity <= f.minLevel ? 'text-red-600' : 'text-slate-900'}`}>
+                                    {f.quantity.toLocaleString()} {f.unit}
+                                </span>
+                            </div>
+                        )) : <div className="text-sm text-slate-400">No compatible feed</div>}
+                        {feedItems.length > 2 && (
+                            <div className="text-[10px] text-primary-600 pt-1">+ {feedItems.length - 2} more</div>
+                        )}
                      </div>
                   </div>
                </div>
 
-               {/* Performance Trends Section */}
-               <div>
-                  <div className="flex justify-between items-center mb-6">
-                      <h3 className="font-bold text-slate-900 flex items-center gap-2 text-lg">
-                         <TrendingUp size={24} className="text-primary-600" /> Performance Trends
-                      </h3>
-                      {/* View Toggle */}
-                      <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-                          {['DAILY', 'WEEKLY', 'MONTHLY'].map(mode => (
-                              <button 
-                                key={mode}
-                                onClick={() => setTrendViewMode(mode as any)}
-                                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
-                                    trendViewMode === mode 
-                                    ? 'bg-white text-slate-900 shadow-sm' 
-                                    : 'text-slate-500 hover:text-slate-700'
-                                }`}
-                              >
-                                  {mode.charAt(0) + mode.slice(1).toLowerCase()}
-                              </button>
-                          ))}
-                      </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                     {/* Weight / Egg Production Chart */}
-                     <PerformanceChart 
-                       title={flock.type === BirdType.LAYER ? "Egg Production" : "Avg Weight"}
+               {/* Main Charts Row */}
+               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                   {/* Production vs Age Curve */}
+                   <PerformanceChart 
+                       title={flock.type === BirdType.LAYER ? "Egg Production vs Flock Age" : "Weight Gain vs Age"}
                        data={chartData}
                        dataKey={flock.type === BirdType.LAYER ? "eggProduction" : "avgWeightG"}
                        labelKey="label"
                        unit={flock.type === BirdType.LAYER ? "eggs" : "g"}
-                       color={flock.type === BirdType.LAYER ? "#eab308" : "#3b82f6"} 
-                       showArea={trendViewMode !== 'MONTHLY'} // Line graph only for Monthly
-                       showMovingAverage={trendViewMode === 'DAILY' || trendViewMode === 'WEEKLY'} // Enable MA for daily/weekly trends
-                     />
+                       type="area"
+                       color="#3b82f6"
+                       showMovingAverage={true}
+                   />
 
-                     {/* Mortality Rate Chart (Calculated Daily %) */}
-                     <PerformanceChart 
-                       title="Daily Mortality Rate"
+                   {/* Production Volume Bar Chart */}
+                   <PerformanceChart 
+                       title="Daily Production Volume"
                        data={chartData}
-                       dataKey="mortalityRate"
+                       dataKey={flock.type === BirdType.LAYER ? "eggProduction" : "feedConsumedKg"}
                        labelKey="label"
-                       unit="%"
-                       color="#ef4444" 
-                       showArea={true} 
-                       showMovingAverage={trendViewMode === 'DAILY'}
-                     />
+                       unit={flock.type === BirdType.LAYER ? "eggs" : "kg feed"}
+                       type="bar"
+                       color={flock.type === BirdType.LAYER ? "#eab308" : "#f97316"}
+                   />
+               </div>
 
-                     {/* FCR Chart (Cumulative Feed / Cumulative Weight) */}
-                     <PerformanceChart 
-                       title="FCR (Cumulative)"
-                       data={chartData}
-                       dataKey="fcr"
-                       labelKey="label"
-                       unit=""
-                       color="#8b5cf6" 
-                       showArea={false} 
-                       showMovingAverage={false} // FCR is typically smoothed or cumulative already
-                     />
-
-                     {/* Total Mortality Volume Chart */}
-                     <PerformanceChart 
-                       title="Mortality Count"
+               {/* Secondary Metrics Row */}
+               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                   {/* Mortality Trend */}
+                   <PerformanceChart 
+                       title="Mortality Trend"
                        data={chartData}
                        dataKey="mortality"
                        labelKey="label"
                        unit="birds"
-                       color="#f97316" 
-                       showArea={trendViewMode !== 'MONTHLY'} 
-                       showMovingAverage={trendViewMode === 'DAILY'} 
-                     />
-                  </div>
+                       type="line"
+                       color="#ef4444"
+                       height={250}
+                   />
+
+                   {/* Cumulative Mortality Rate */}
+                   <PerformanceChart 
+                       title="Cumulative Mortality Rate"
+                       data={chartData}
+                       dataKey="cumulativeMortalityRate"
+                       labelKey="label"
+                       unit="%"
+                       type="line"
+                       color="#f472b6"
+                       height={250}
+                   />
                </div>
             </div>
          )}
 
+         {/* LOGS TAB */}
          {activeTab === 'LOGS' && (
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                <div className="overflow-x-auto">
@@ -913,24 +723,22 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
                               <td className="px-6 py-4 font-bold text-slate-700">{log.day}</td>
                               <td className="px-6 py-4 text-slate-600">{log.date}</td>
                               <td className="px-6 py-4 text-red-600 font-medium">
-                                <div className="flex flex-col">
-                                    <div className="flex items-center gap-2">
-                                      {log.mortality > 0 ? log.mortality : '-'}
-                                      {log.mortalityImage && (
-                                        <button 
-                                          onClick={() => setViewProofUrl(log.mortalityImage || null)}
-                                          className="text-slate-400 hover:text-blue-600 transition-colors p-1 hover:bg-blue-50 rounded"
-                                          title="View Mortality Proof"
-                                        >
+                                <div className="flex items-center gap-2">
+                                  {log.mortality > 0 ? log.mortality : '-'}
+                                  {log.mortalityImage && (
+                                      <button 
+                                        onClick={() => setViewProofUrl(log.mortalityImage)}
+                                        className="text-slate-400 hover:text-primary-600 transition-colors"
+                                        title="View Proof"
+                                      >
                                           <ImageIcon size={16} />
-                                        </button>
-                                      )}
-                                    </div>
-                                    {log.mortality > 0 && log.mortalityReason && (
-                                        <span className="text-[10px] text-slate-500 font-normal italic leading-tight mt-0.5">
-                                            {log.mortalityReason}
-                                        </span>
-                                    )}
+                                      </button>
+                                  )}
+                                  {log.mortalityReason && (
+                                      <span className="text-xs text-slate-400 truncate max-w-[100px] block" title={log.mortalityReason}>
+                                          ({log.mortalityReason})
+                                      </span>
+                                  )}
                                 </div>
                               </td>
                               <td className="px-6 py-4 text-slate-600">{log.feedConsumedKg}</td>
@@ -942,13 +750,6 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
                               <td className="px-6 py-4 text-slate-500 max-w-xs truncate">{log.notes || '-'}</td>
                            </tr>
                         ))}
-                        {recentLogs.length === 0 && (
-                           <tr>
-                              <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
-                                 No logs found. Start by adding a daily log.
-                              </td>
-                           </tr>
-                        )}
                      </tbody>
                   </table>
                </div>
@@ -956,11 +757,7 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
          )}
 
          {activeTab === 'EGG_PROD' && (
-             <EggProductionModule 
-                flock={flock} 
-                inventoryItems={inventoryItems} 
-                onRequestRecord={() => setIsLogModalOpen(true)} 
-             />
+             <EggProductionModule flock={flock} inventoryItems={inventoryItems} onRequestRecord={() => setIsLogModalOpen(true)} />
          )}
 
          {activeTab === 'AI' && (
@@ -973,48 +770,19 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
                      <div>
                         <h2 className="text-2xl font-bold">AI Performance Analyst</h2>
                         <p className="text-purple-100 mt-1 max-w-xl">
-                           Leverage Gemini AI to analyze your flock's growth patterns, mortality risks, and feed conversion efficiency.
+                           Leverage Gemini AI to analyze growth patterns and mortality risks.
                         </p>
                      </div>
                   </div>
                   
                   {!aiAnalysis ? (
-                     <button 
-                       onClick={handleRunAnalysis}
-                       disabled={isLoadingAi}
-                       className="bg-white text-purple-700 px-6 py-3 rounded-lg font-bold hover:bg-purple-50 transition-colors shadow-sm disabled:opacity-70 disabled:cursor-wait flex items-center gap-2"
-                     >
-                        {isLoadingAi ? 'Analyzing Data...' : 'Generate Analysis Report'}
+                     <button onClick={handleRunAnalysis} disabled={isLoadingAi} className="bg-white text-purple-700 px-6 py-3 rounded-lg font-bold shadow-sm flex items-center gap-2">
+                        {isLoadingAi ? 'Analyzing...' : 'Generate Report'}
                      </button>
                   ) : (
                      <div className="bg-white/10 rounded-lg p-4 border border-white/20">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="font-bold flex items-center gap-2"><Activity size={18}/> Analysis Result</h3>
-                            <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                                aiAnalysis.alertLevel === 'HIGH' ? 'bg-red-500/20 border-red-400 text-red-100' :
-                                aiAnalysis.alertLevel === 'MEDIUM' ? 'bg-yellow-500/20 border-yellow-400 text-yellow-100' :
-                                'bg-green-500/20 border-green-400 text-green-100'
-                            }`}>
-                                Risk Level: {aiAnalysis.alertLevel}
-                            </span>
-                        </div>
-                        <p className="mb-4 leading-relaxed opacity-90">{aiAnalysis.analysis}</p>
-                        
-                        <h4 className="font-bold text-sm uppercase tracking-wider opacity-70 mb-2">Recommendations</h4>
-                        <ul className="space-y-2">
-                           {aiAnalysis.recommendations.map((rec, i) => (
-                              <li key={i} className="flex items-start gap-2 text-sm bg-white/5 p-2 rounded">
-                                 <ChevronRight size={14} className="mt-0.5 shrink-0" /> {rec}
-                              </li>
-                           ))}
-                        </ul>
-
-                        <button 
-                          onClick={() => setAiAnalysis(null)}
-                          className="mt-6 text-sm underline opacity-70 hover:opacity-100"
-                        >
-                           Clear and run new analysis
-                        </button>
+                        <h3 className="font-bold mb-2">Analysis Result</h3>
+                        <p className="opacity-90">{aiAnalysis.analysis}</p>
                      </div>
                   )}
                </div>
@@ -1022,276 +790,258 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
          )}
       </div>
 
-      {/* Status Modal */}
+      {/* Proof Modal */}
+      {viewProofUrl && (
+        <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setViewProofUrl(null)}>
+            <div className="relative max-w-3xl max-h-[90vh] bg-black rounded-xl overflow-hidden shadow-2xl animate-in zoom-in duration-200">
+                <button onClick={() => setViewProofUrl(null)} className="absolute top-2 right-2 p-2 bg-black/50 text-white rounded-full hover:bg-white/20 transition-colors z-10">
+                    <X size={24} />
+                </button>
+                <img src={viewProofUrl} alt="Proof" className="w-full h-full object-contain" />
+            </div>
+        </div>
+      )}
+
+      {/* Modals */}
       {isStatusModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden">
-              <div className="p-6 border-b border-slate-200">
-                 <h3 className="font-bold text-lg text-slate-900">Update Flock Status</h3>
-              </div>
-              <div className="p-6 space-y-4">
-                 <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">New Status</label>
-                    <select 
-                      value={statusUpdateData.status}
-                      onChange={(e) => setStatusUpdateData({...statusUpdateData, status: e.target.value as FlockStatus})}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-                    >
-                       <option value={FlockStatus.ACTIVE}>Active</option>
-                       <option value={FlockStatus.HARVESTED}>Harvested</option>
-                       <option value={FlockStatus.QUARANTINE}>Quarantine</option>
-                       <option value={FlockStatus.PLANNED}>Planned</option>
-                    </select>
+           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
+              <div className="p-6 border-b border-slate-200"><h3 className="font-bold text-lg text-slate-900">Update Status</h3></div>
+              <div className="p-6">
+                 <select value={statusUpdateData.status} onChange={(e) => setStatusUpdateData({...statusUpdateData, status: e.target.value as FlockStatus})} className="w-full px-3 py-2 border rounded-lg">
+                    <option value={FlockStatus.ACTIVE}>Active</option>
+                    <option value={FlockStatus.HARVESTED}>Harvested</option>
+                    <option value={FlockStatus.QUARANTINE}>Quarantine</option>
+                 </select>
+                 <div className="mt-4 flex justify-end gap-2">
+                    <button onClick={() => setIsStatusModalOpen(false)} className="px-4 py-2 text-slate-600 bg-slate-100 rounded-lg">Cancel</button>
+                    <button onClick={handleStatusUpdate} className="px-4 py-2 bg-primary-600 text-white rounded-lg">Update</button>
                  </div>
-
-                 {statusUpdateData.status === FlockStatus.HARVESTED && (
-                     <div className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-100 rounded-lg">
-                         <input 
-                           type="checkbox" 
-                           id="clearCount"
-                           checked={statusUpdateData.clearCount}
-                           onChange={(e) => setStatusUpdateData({...statusUpdateData, clearCount: e.target.checked})}
-                           className="mt-1 w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
-                         />
-                         <label htmlFor="clearCount" className="text-sm text-slate-700 cursor-pointer select-none">
-                             <span className="font-bold block text-blue-900">Clear Live Bird Count?</span>
-                             Sets population to 0. Use this if all birds have been sold or removed.
-                         </label>
-                     </div>
-                 )}
-              </div>
-              <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3">
-                 <button 
-                   onClick={() => setIsStatusModalOpen(false)}
-                   className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors"
-                   >
-                   Cancel
-                 </button>
-                 <button 
-                   onClick={handleStatusUpdate}
-                   className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-sm flex items-center gap-2"
-                 >
-                   <Check size={16} /> Update Status
-                 </button>
               </div>
            </div>
         </div>
       )}
 
-      {/* Log Modal */}
       {isLogModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
               <div className="p-6 border-b border-slate-200 flex justify-between items-center sticky top-0 bg-white z-10">
-                 <h3 className="font-bold text-lg text-slate-900">Add Daily Log - Day {flock.logs.length + 1}</h3>
-                 <button onClick={() => setIsLogModalOpen(false)} className="text-slate-400 hover:text-slate-600">
-                   <X size={20} />
-                 </button>
-              </div>
-              
-              <form onSubmit={handleAddLog} className="p-6 space-y-4">
-                 {logFormError && (
-                    <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm border border-red-200 flex items-start gap-2">
-                       <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                       {logFormError}
-                    </div>
-                 )}
-
-                 <div className="grid grid-cols-2 gap-4">
-                    <div>
-                       <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
-                       <input 
-                         type="date" 
-                         required
-                         value={logFormData.date}
-                         onChange={e => setLogFormData({...logFormData, date: e.target.value})}
-                         className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
-                       />
-                    </div>
-                    <div>
-                       <label className="block text-sm font-medium text-slate-700 mb-1">Mortality</label>
-                       <input 
-                         type="number" 
-                         min="0"
-                         value={logFormData.mortality}
-                         onChange={e => setLogFormData({...logFormData, mortality: Number(e.target.value)})}
-                         className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
-                       />
-                    </div>
+                 <div>
+                    <h3 className="font-bold text-lg text-slate-900">Daily Log Entry</h3>
+                    <p className="text-sm text-slate-500">{flock.name} • {logFormData.date}</p>
                  </div>
+                 <button onClick={() => setIsLogModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+              </div>
+              <form onSubmit={handleAddLog} className="p-6 space-y-6">
+                 {logFormError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm flex items-center gap-2"><AlertTriangle size={16}/> {logFormError}</div>}
+                 
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* LEFT COLUMN: Mortality & Health */}
+                    <div className="space-y-4">
+                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider border-b pb-2 flex items-center gap-2">
+                            <AlertTriangle size={14} className="text-red-500"/> Mortality & Health
+                        </h4>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-700 mb-1">Log Date</label>
+                                <input type="date" required value={logFormData.date} onChange={e => setLogFormData({...logFormData, date: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-700 mb-1">Mortality Count</label>
+                                <input 
+                                    type="number" 
+                                    min="0"
+                                    value={logFormData.mortality} 
+                                    onChange={e => setLogFormData({...logFormData, mortality: Number(e.target.value)})} 
+                                    className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-red-500 outline-none" 
+                                />
+                            </div>
+                        </div>
 
-                 {logFormData.mortality > 0 && (
-                     <div className="space-y-4 p-3 bg-red-50 rounded-lg border border-red-100">
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Reason for Mortality</label>
+                            <label className="block text-xs font-medium text-slate-700 mb-1">Reason / Cause</label>
                             <input 
-                              type="text" 
-                              value={logFormData.mortalityReason}
-                              onChange={e => setLogFormData({...logFormData, mortalityReason: e.target.value})}
-                              className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
-                              placeholder="e.g. Sickness, Injury"
+                                type="text"
+                                placeholder="e.g. Heat stress, Unknown" 
+                                value={logFormData.mortalityReason} 
+                                onChange={e => setLogFormData({...logFormData, mortalityReason: e.target.value})} 
+                                className="w-full border border-slate-300 p-2 rounded-lg text-sm" 
                             />
                         </div>
+
+                        {/* Proof Section */}
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Upload Proof (Optional)</label>
-                            <div className="flex items-center gap-3">
-                                <label className="cursor-pointer bg-white border border-slate-300 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 flex items-center gap-2 transition-colors">
-                                    <Camera size={16} />
-                                    {logFormData.mortalityImage ? 'Change Image' : 'Select Image'}
-                                    <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-                                </label>
-                                {logFormData.mortalityImage && (
-                                    <div className="relative w-10 h-10 rounded overflow-hidden border border-slate-300">
-                                        <img src={logFormData.mortalityImage} alt="Proof" className="w-full h-full object-cover" />
+                            <label className="block text-xs font-medium text-slate-700 mb-2">Evidence Photo (Optional)</label>
+                            <div className="flex items-start gap-4">
+                                {logFormData.mortalityImage ? (
+                                    <div className="relative">
+                                        <div className="h-24 w-24 rounded-lg overflow-hidden border border-slate-300 shadow-sm">
+                                            <img src={logFormData.mortalityImage} alt="Preview" className="w-full h-full object-cover" />
+                                        </div>
+                                        <button 
+                                            type="button"
+                                            onClick={() => setLogFormData(prev => ({...prev, mortalityImage: ''}))}
+                                            className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-md hover:bg-red-600 transition-colors"
+                                        >
+                                            <X size={12} />
+                                        </button>
                                     </div>
+                                ) : (
+                                    <label className="cursor-pointer bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-700 border-2 border-dashed border-slate-300 rounded-lg h-24 w-24 flex flex-col items-center justify-center transition-all">
+                                        <Camera size={20} className="mb-1" />
+                                        <span className="text-[10px] font-bold">Upload</span>
+                                        <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                                    </label>
+                                )}
+
+                                {/* AI Diagnosis Button */}
+                                {logFormData.mortalityImage && (
+                                    <button
+                                        type="button"
+                                        onClick={handleDiagnoseImage}
+                                        disabled={isDiagnosing}
+                                        className="flex-1 bg-purple-50 text-purple-700 border border-purple-200 px-4 py-2 rounded-lg text-xs font-bold hover:bg-purple-100 transition-colors flex items-center justify-center gap-2 h-24"
+                                    >
+                                        {isDiagnosing ? <Loader2 size={16} className="animate-spin" /> : <Stethoscope size={16} />}
+                                        {isDiagnosing ? 'Analyzing...' : 'Diagnose Cause (AI)'}
+                                    </button>
                                 )}
                             </div>
                         </div>
-                     </div>
-                 )}
+                    </div>
 
-                 <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-4">
-                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-2">
-                           <Scale size={16} /> Feed Consumed (kg)
-                        </label>
-                        <input 
-                          type="number" 
-                          min="0"
-                          step="0.01"
-                          value={logFormData.feedConsumedKg}
-                          onChange={e => setLogFormData({...logFormData, feedConsumedKg: Number(e.target.value)})}
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
-                        />
-                     </div>
-                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Deduct from Inventory?</label>
-                        <select 
-                          value={logFormData.selectedFeedId}
-                          onChange={e => setLogFormData({...logFormData, selectedFeedId: e.target.value})}
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-                        >
-                           <option value="">Do not deduct</option>
-                           {feedItems.map(item => (
-                              <option key={item.id} value={item.id}>{item.name} ({item.quantity} {item.unit})</option>
-                           ))}
-                        </select>
-                     </div>
+                    {/* RIGHT COLUMN: Consumption & Production */}
+                    <div className="space-y-6">
+                        {/* Consumption */}
+                        <div className="space-y-4">
+                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider border-b pb-2 flex items-center gap-2">
+                                <Wheat size={14} className="text-orange-500"/> Consumption
+                            </h4>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="col-span-2">
+                                    <label className="block text-xs font-medium text-slate-700 mb-1">Select Feed Stock</label>
+                                    <select 
+                                        value={logFormData.selectedFeedId}
+                                        onChange={e => setLogFormData({...logFormData, selectedFeedId: e.target.value})}
+                                        className="w-full border border-slate-300 p-2 rounded-lg text-sm bg-white"
+                                    >
+                                        <option value="">-- Choose Feed --</option>
+                                        {feedItems.map(item => (
+                                            <option key={item.id} value={item.id}>
+                                                {item.name} ({item.quantity} {item.unit})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {selectedFeed && (
+                                        <div className={`text-[10px] mt-1 ${selectedFeed.quantity < 50 ? 'text-red-500 font-bold' : 'text-slate-500'}`}>
+                                            Available: {selectedFeed.quantity} {selectedFeed.unit}
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-700 mb-1">Feed Used (kg)</label>
+                                    <input 
+                                        type="number" 
+                                        min="0"
+                                        step="0.1"
+                                        value={logFormData.feedConsumedKg || ''} 
+                                        onChange={e => setLogFormData({...logFormData, feedConsumedKg: Number(e.target.value)})} 
+                                        className="w-full border border-slate-300 p-2 rounded-lg text-sm" 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-700 mb-1">Water (L)</label>
+                                    <input 
+                                        type="number" 
+                                        min="0"
+                                        step="0.1"
+                                        value={logFormData.waterConsumedL || ''} 
+                                        onChange={e => setLogFormData({...logFormData, waterConsumedL: Number(e.target.value)})} 
+                                        className="w-full border border-slate-300 p-2 rounded-lg text-sm" 
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Production */}
+                        <div className="space-y-4">
+                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider border-b pb-2 flex items-center gap-2">
+                                <Activity size={14} className="text-blue-500"/> Production & Growth
+                            </h4>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-700 mb-1">Avg Weight (g)</label>
+                                    <input 
+                                        type="number" 
+                                        min="0"
+                                        value={logFormData.avgWeightG || ''} 
+                                        onChange={e => setLogFormData({...logFormData, avgWeightG: Number(e.target.value)})} 
+                                        className="w-full border border-slate-300 p-2 rounded-lg text-sm" 
+                                    />
+                                </div>
+                                
+                                {flock.type === BirdType.LAYER && (
+                                    <>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-700 mb-1">Total Eggs</label>
+                                            <input 
+                                                type="number" 
+                                                min="0"
+                                                value={logFormData.eggProduction || ''} 
+                                                onChange={e => setLogFormData({...logFormData, eggProduction: Number(e.target.value)})} 
+                                                className="w-full border border-slate-300 p-2 rounded-lg text-sm" 
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-700 mb-1">Damaged/Cracked</label>
+                                            <input 
+                                                type="number" 
+                                                min="0"
+                                                value={logFormData.eggsDamaged || ''} 
+                                                onChange={e => setLogFormData({...logFormData, eggsDamaged: Number(e.target.value)})} 
+                                                className="w-full border border-slate-300 p-2 rounded-lg text-sm text-red-600" 
+                                            />
+                                        </div>
+                                        <div className="col-span-2">
+                                            <div className="flex items-center gap-2 bg-yellow-50 text-yellow-700 px-3 py-2 rounded-lg border border-yellow-100 text-xs">
+                                                <PackageCheck size={14} />
+                                                Net count will be added to 'Table Eggs' inventory automatically.
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </div>
                  </div>
-
-                 <div className="grid grid-cols-2 gap-4">
-                    <div>
-                       <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-2">
-                          <Droplets size={16} /> Water (L)
-                       </label>
-                       <input 
-                         type="number" 
-                         min="0"
-                         value={logFormData.waterConsumedL}
-                         onChange={e => setLogFormData({...logFormData, waterConsumedL: Number(e.target.value)})}
-                         className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
-                       />
-                    </div>
-                    <div>
-                       <label className="block text-sm font-medium text-slate-700 mb-1">Avg Weight (g)</label>
-                       <input 
-                         type="number" 
-                         min="0"
-                         value={logFormData.avgWeightG}
-                         onChange={e => setLogFormData({...logFormData, avgWeightG: Number(e.target.value)})}
-                         className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
-                       />
-                    </div>
-                 </div>
-
-                 {flock.type === BirdType.LAYER && (
-                    <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 space-y-4">
-                       <div>
-                          <label className="block text-sm font-bold text-yellow-800 mb-1 flex items-center gap-2">
-                             <Egg size={16} /> Egg Production
-                          </label>
-                          <input 
-                            type="number" 
-                            min="0"
-                            value={logFormData.eggProduction}
-                            onChange={e => setLogFormData({...logFormData, eggProduction: Number(e.target.value)})}
-                            className="w-full px-3 py-2 border border-yellow-300 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500"
-                          />
-                       </div>
-                       <div>
-                          <label className="block text-sm font-medium text-yellow-800 mb-1">Damaged / Rejected</label>
-                          <input 
-                            type="number" 
-                            min="0"
-                            value={logFormData.eggsDamaged}
-                            onChange={e => setLogFormData({...logFormData, eggsDamaged: Number(e.target.value)})}
-                            className="w-full px-3 py-2 border border-yellow-300 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500"
-                          />
-                       </div>
-                    </div>
-                 )}
 
                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Notes / Observations</label>
                     <textarea 
-                       rows={2}
-                       value={logFormData.notes}
-                       onChange={e => setLogFormData({...logFormData, notes: e.target.value})}
-                       className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                        placeholder="Any behavioral changes, equipment issues, etc." 
+                        value={logFormData.notes} 
+                        onChange={e => setLogFormData({...logFormData, notes: e.target.value})} 
+                        className="w-full border border-slate-300 p-2 rounded-lg text-sm h-24 resize-none focus:ring-2 focus:ring-primary-500 outline-none" 
                     />
                  </div>
 
-                 <div className="pt-4 flex justify-end gap-3">
-                    <button type="button" onClick={() => setIsLogModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg font-medium">Cancel</button>
-                    <button type="submit" className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-sm flex items-center gap-2">
-                      <Save size={18} /> Save Log
+                 <div className="pt-2 flex justify-end gap-3">
+                    <button 
+                        type="button" 
+                        onClick={() => setIsLogModalOpen(false)}
+                        className="px-6 py-2.5 rounded-lg font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        type="submit" 
+                        className="bg-primary-600 hover:bg-primary-700 text-white px-8 py-2.5 rounded-lg font-bold shadow-lg flex items-center gap-2 transition-transform active:scale-95"
+                    >
+                        <Save size={18} /> Save Entry
                     </button>
                  </div>
               </form>
-           </div>
-        </div>
-      )}
-
-      {/* View Proof Image Modal */}
-      {viewProofUrl && (
-        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setViewProofUrl(null)}>
-           <div className="relative max-w-4xl max-h-[90vh] w-full flex items-center justify-center" onClick={e => e.stopPropagation()}>
-              <button 
-                onClick={() => setViewProofUrl(null)}
-                className="absolute -top-12 right-0 text-white hover:text-slate-300 transition-colors"
-              >
-                <X size={32} />
-              </button>
-              <img src={viewProofUrl} alt="Mortality Proof" className="max-w-full max-h-[80vh] rounded-lg shadow-2xl border border-slate-700" />
-           </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {isDeleteConfirmOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in duration-200">
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600">
-                <Trash2 size={24} />
-              </div>
-              <h3 className="font-bold text-lg text-slate-900 mb-2">Delete Flock?</h3>
-              <p className="text-slate-500 text-sm mb-6">
-                 Are you sure you want to delete <strong>{flock.name}</strong>? This action cannot be undone.
-              </p>
-              <div className="flex gap-3">
-                 <button 
-                   onClick={() => setIsDeleteConfirmOpen(false)}
-                   className="flex-1 px-4 py-2 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium transition-colors"
-                 >
-                   Cancel
-                 </button>
-                 <button 
-                   onClick={() => onDeleteFlock(flock.id)}
-                   className="flex-1 px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors"
-                 >
-                   Delete
-                 </button>
-              </div>
            </div>
         </div>
       )}

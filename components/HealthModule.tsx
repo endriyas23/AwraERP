@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Flock, FlockStatus, InventoryItem, MedicalRecord, InventoryCategory } from '../types';
+import { Flock, FlockStatus, InventoryItem, MedicalRecord, InventoryCategory, AnalysisResult } from '../types';
 import { 
   HeartPulse, 
   Plus, 
@@ -18,8 +18,14 @@ import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
-  Check
+  Check,
+  BrainCircuit,
+  Sparkles,
+  Loader2,
+  ShieldCheck,
+  Activity
 } from 'lucide-react';
+import { analyzeHealthTrends } from '../services/geminiService';
 
 interface HealthModuleProps {
   flocks: Flock[];
@@ -36,11 +42,15 @@ const HealthModule: React.FC<HealthModuleProps> = ({
   inventoryItems,
   onUpdateInventory
 }) => {
-  const [activeTab, setActiveTab] = useState<'RECORDS' | 'SCHEDULE'>('RECORDS');
+  const [activeTab, setActiveTab] = useState<'RECORDS' | 'SCHEDULE' | 'AI'>('RECORDS');
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('ALL');
+  
+  // AI State
+  const [aiAnalysis, setAiAnalysis] = useState<AnalysisResult | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   
   // Calendar State
   const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date());
@@ -216,6 +226,13 @@ const HealthModule: React.FC<HealthModuleProps> = ({
     setIsRecordModalOpen(false);
   };
 
+  const handleRunAiAnalysis = async () => {
+    setIsAnalyzing(true);
+    const result = await analyzeHealthTrends(allRecords, flocks);
+    setAiAnalysis(result);
+    setIsAnalyzing(false);
+  };
+
   const getIconForType = (type: string) => {
     switch (type) {
       case 'VACCINATION': return <Syringe size={16} className="text-blue-600" />;
@@ -335,18 +352,24 @@ const HealthModule: React.FC<HealthModuleProps> = ({
             <h1 className="text-2xl font-bold text-slate-900">Health & Veterinary</h1>
             <p className="text-slate-500 text-sm mt-1">Manage vaccinations, treatments, and medical records.</p>
          </div>
-         <div className="flex bg-white p-1 rounded-lg border border-slate-200">
+         <div className="flex bg-white p-1 rounded-lg border border-slate-200 overflow-x-auto">
             <button 
               onClick={() => setActiveTab('RECORDS')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'RECORDS' ? 'bg-primary-50 text-primary-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'RECORDS' ? 'bg-primary-50 text-primary-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
               <FileText size={16} /> Medical Records
             </button>
             <button 
               onClick={() => setActiveTab('SCHEDULE')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'SCHEDULE' ? 'bg-primary-50 text-primary-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'SCHEDULE' ? 'bg-primary-50 text-primary-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
               <Calendar size={16} /> Vaccination Schedule
+            </button>
+            <button 
+              onClick={() => setActiveTab('AI')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'AI' ? 'bg-teal-50 text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <BrainCircuit size={16} /> Vet AI
             </button>
          </div>
       </div>
@@ -605,6 +628,83 @@ const HealthModule: React.FC<HealthModuleProps> = ({
                   </div>
               </div>
            </div>
+        </div>
+      )}
+
+      {activeTab === 'AI' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+           <div className="bg-gradient-to-r from-teal-600 to-emerald-700 rounded-xl p-8 text-white shadow-xl">
+              <div className="flex flex-col md:flex-row gap-6 items-start md:items-center justify-between">
+                 <div className="flex items-start gap-4">
+                    <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm shadow-inner">
+                       <BrainCircuit size={32} />
+                    </div>
+                    <div>
+                       <h2 className="text-2xl font-bold">Veterinary Health Analyst</h2>
+                       <p className="text-teal-100 mt-1 max-w-xl text-sm leading-relaxed opacity-90">
+                          AI-powered pathology analysis. Evaluate symptoms, mortality trends, and vaccination history to detect outbreaks early.
+                       </p>
+                    </div>
+                 </div>
+                 <button 
+                   onClick={handleRunAiAnalysis}
+                   disabled={isAnalyzing}
+                   className="bg-white text-teal-700 px-6 py-3 rounded-lg font-bold shadow-lg hover:shadow-xl transition-all flex items-center gap-2 hover:bg-teal-50 disabled:opacity-70 disabled:cursor-not-allowed"
+                 >
+                    {isAnalyzing ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                    {isAnalyzing ? 'Analyzing Data...' : 'Run Health Audit'}
+                 </button>
+              </div>
+           </div>
+
+           {aiAnalysis && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4 duration-500">
+                 {/* Clinical Assessment */}
+                 <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-4 pb-4 border-b border-slate-100">
+                       <Activity size={20} className="text-slate-500" />
+                       <h3 className="font-bold text-slate-800">Clinical Assessment</h3>
+                    </div>
+                    <div className="prose prose-sm text-slate-600 max-w-none leading-relaxed">
+                       {aiAnalysis.analysis.split('\n').map((line, i) => (
+                          <p key={i} className="mb-2">{line}</p>
+                       ))}
+                    </div>
+                 </div>
+
+                 {/* Risk & Recommendations */}
+                 <div className="space-y-6">
+                    <div className={`p-6 rounded-xl border flex flex-col items-center justify-center text-center shadow-sm ${
+                        aiAnalysis.alertLevel === 'HIGH' ? 'bg-red-50 border-red-200 text-red-800' :
+                        aiAnalysis.alertLevel === 'MEDIUM' ? 'bg-orange-50 border-orange-200 text-orange-800' :
+                        'bg-green-50 border-green-200 text-green-800'
+                    }`}>
+                        <div className={`p-3 rounded-full mb-3 ${
+                            aiAnalysis.alertLevel === 'HIGH' ? 'bg-red-100' :
+                            aiAnalysis.alertLevel === 'MEDIUM' ? 'bg-orange-100' : 'bg-green-100'
+                        }`}>
+                            <ShieldCheck size={24} />
+                        </div>
+                        <h4 className="font-bold text-lg">Biosecurity Risk</h4>
+                        <p className="text-2xl font-black mt-1">{aiAnalysis.alertLevel}</p>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                       <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                          <CheckCircle2 size={18} className="text-teal-600" /> Recommended Protocols
+                       </h3>
+                       <ul className="space-y-3">
+                          {aiAnalysis.recommendations.map((rec, i) => (
+                             <li key={i} className="flex gap-3 text-sm text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                <span className="font-bold text-slate-400">{i+1}.</span>
+                                {rec}
+                             </li>
+                          ))}
+                       </ul>
+                    </div>
+                 </div>
+              </div>
+           )}
         </div>
       )}
 

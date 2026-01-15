@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { SalesOrder, Customer, InventoryItem, Flock, OrderItem, OrderStatus, FarmProfile } from '../types';
+import { SalesOrder, Customer, InventoryItem, Flock, OrderItem, OrderStatus, FarmProfile, AnalysisResult } from '../types';
 import { 
   ShoppingBag, 
   Users, 
@@ -13,25 +13,29 @@ import {
   Save, 
   Check, 
   Package, 
-  Trash, 
-  Printer,
-  Phone,
-  MapPin,
-  Mail,
-  CheckCircle2,
-  Clock,
+  Printer, 
+  Phone, 
+  MapPin, 
+  Mail, 
+  CheckCircle2, 
+  Clock, 
+  ArrowRight, 
+  BarChart2, 
+  LayoutTemplate, 
+  List, 
+  TrendingUp, 
+  Award, 
+  Zap, 
+  Bird, 
+  Calendar, 
   AlertCircle,
-  ArrowRight,
-  MoreVertical,
-  BarChart2,
-  LayoutTemplate,
-  List,
-  TrendingUp,
-  Award,
-  Zap,
-  PieChart,
-  Bird
+  BrainCircuit,
+  Sparkles,
+  Loader2,
+  Lightbulb,
+  Target
 } from 'lucide-react';
+import { analyzeSalesPerformance } from '../services/geminiService';
 
 interface SalesCRMProps {
   orders: SalesOrder[];
@@ -49,6 +53,122 @@ interface SalesCRMProps {
   onUpdateFlock: (flock: Flock) => void;
 }
 
+// --- Local Chart Components ---
+
+const SalesLineChart = ({ data, color = '#10b981' }: { data: { date: string; value: number }[]; color?: string }) => {
+  const height = 200;
+  const width = 600;
+  const padding = 20;
+
+  if (data.length === 0) return <div className="h-full flex items-center justify-center text-slate-400 text-xs">No data</div>;
+
+  const maxVal = Math.max(...data.map(d => d.value), 100) * 1.1;
+  
+  const getX = (index: number) => padding + (index / (data.length - 1 || 1)) * (width - 2 * padding);
+  const getY = (value: number) => height - padding - (value / maxVal) * (height - 2 * padding);
+
+  let pathD = `M ${getX(0)} ${getY(data[0].value)}`;
+  for (let i = 0; i < data.length - 1; i++) {
+    const x1 = getX(i);
+    const y1 = getY(data[i].value);
+    const x2 = getX(i + 1);
+    const y2 = getY(data[i + 1].value);
+    const cp1x = x1 + (x2 - x1) / 2;
+    const cp2x = x2 - (x2 - x1) / 2;
+    pathD += ` C ${cp1x} ${y1}, ${cp2x} ${y2}, ${x2} ${y2}`;
+  }
+
+  // Area path
+  const areaD = `${pathD} L ${getX(data.length - 1)} ${height - padding} L ${getX(0)} ${height - padding} Z`;
+
+  return (
+    <div className="w-full h-full relative">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
+        <defs>
+          <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.2" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {/* Grid lines */}
+        {[0, 0.25, 0.5, 0.75, 1].map(t => (
+          <line 
+            key={t} 
+            x1={padding} 
+            y1={padding + t * (height - 2 * padding)} 
+            x2={width - padding} 
+            y2={padding + t * (height - 2 * padding)} 
+            stroke="#f1f5f9" 
+            strokeDasharray="4 4" 
+          />
+        ))}
+        <path d={areaD} fill="url(#chartGradient)" />
+        <path d={pathD} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Points */}
+        {data.map((d, i) => (
+           (i % Math.ceil(data.length / 6) === 0 || i === data.length - 1) && (
+             <g key={i}>
+                <circle cx={getX(i)} cy={getY(d.value)} r="3" fill="white" stroke={color} strokeWidth="2" />
+                <text x={getX(i)} y={height} textAnchor="middle" className="text-[10px] fill-slate-400">{d.date.split('-')[2]}</text>
+             </g>
+           )
+        ))}
+      </svg>
+    </div>
+  );
+};
+
+const SegmentPieChart = ({ data }: { data: { label: string; value: number; color: string }[] }) => {
+  const total = data.reduce((acc, d) => acc + d.value, 0);
+  let cumulativePercent = 0;
+
+  if (total === 0) return <div className="h-full flex items-center justify-center text-slate-400 text-xs">No data</div>;
+
+  return (
+    <div className="flex items-center gap-8 h-full justify-center">
+      <div className="relative w-32 h-32">
+        <svg viewBox="0 0 100 100" className="transform -rotate-90 w-full h-full">
+          {data.map((d, i) => {
+            const percent = d.value / total;
+            const circumference = 2 * Math.PI * 40; // r=40
+            const strokeDasharray = `${percent * circumference} ${circumference}`;
+            const strokeDashoffset = -cumulativePercent * circumference;
+            cumulativePercent += percent;
+
+            return (
+              <circle
+                key={i}
+                cx="50"
+                cy="50"
+                r="40"
+                fill="transparent"
+                stroke={d.color}
+                strokeWidth="16"
+                strokeDasharray={strokeDasharray}
+                strokeDashoffset={strokeDashoffset}
+                className="transition-all duration-500"
+              />
+            );
+          })}
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+           <span className="text-[10px] text-slate-400 uppercase font-bold">Total</span>
+           <span className="text-xs font-bold text-slate-800">${(total/1000).toFixed(1)}k</span>
+        </div>
+      </div>
+      <div className="space-y-2">
+        {data.map((d, i) => (
+          <div key={i} className="flex items-center gap-2 text-xs">
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: d.color }}></div>
+            <span className="text-slate-600 font-medium">{d.label}</span>
+            <span className="text-slate-400 ml-auto pl-2">{((d.value / total) * 100).toFixed(0)}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const SalesCRM: React.FC<SalesCRMProps> = ({ 
   orders, 
   customers, 
@@ -64,7 +184,7 @@ const SalesCRM: React.FC<SalesCRMProps> = ({
   onUpdateInventory, 
   onUpdateFlock
 }) => {
-  const [activeTab, setActiveTab] = useState<'ORDERS' | 'CUSTOMERS' | 'ANALYTICS'>('ORDERS');
+  const [activeTab, setActiveTab] = useState<'ORDERS' | 'CUSTOMERS' | 'ANALYTICS' | 'AI'>('ORDERS');
   const [orderViewMode, setOrderViewMode] = useState<'LIST' | 'BOARD'>('LIST');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'ALL'>('ALL');
@@ -75,6 +195,10 @@ const SalesCRM: React.FC<SalesCRMProps> = ({
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   
+  // AI State
+  const [aiAnalysis, setAiAnalysis] = useState<AnalysisResult | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
   // Selection State
   const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
@@ -145,70 +269,109 @@ const SalesCRM: React.FC<SalesCRMProps> = ({
   const formWht = formSubtotal * (orderForm.whtRate / 100);
   const formTotal = formSubtotal + formVat - formWht;
 
-  // --- Advanced Segments & Analytics ---
+  // --- Advanced Segments & Analytics Logic ---
 
   const getCustomerSegment = (c: Customer) => {
     // 1. VIP: High Spend (> $5000)
     if (c.totalSpent > 5000) return { label: 'VIP', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: <Award size={12} /> };
-    
     // 2. Loyal: Frequent Orders (> 5)
     if (c.totalOrders > 5) return { label: 'Loyal', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: <CheckCircle2 size={12} /> };
-    
     // 3. New: Joined < 30 days
     const joined = new Date(c.joinedDate);
     const now = new Date();
     const diffTime = Math.abs(now.getTime() - joined.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     if (diffDays < 30) return { label: 'New', color: 'bg-green-100 text-green-700 border-green-200', icon: <Zap size={12} /> };
-    
     // Default
     return { label: 'Regular', color: 'bg-slate-100 text-slate-600 border-slate-200', icon: null };
   };
 
-  const analyticsData = useMemo<{
-    totalRevenue: number;
-    avgOrderValue: number;
-    categorySales: Record<string, number>;
-    monthlyRevenue: { month: string; revenue: number; order: number }[];
-  }>(() => {
-    const totalRevenue = orders.reduce((acc, o) => acc + (o.status !== 'CANCELLED' ? o.totalAmount : 0), 0);
-    const totalOrdersCount = orders.filter(o => o.status !== 'CANCELLED').length;
-    const avgOrderValue = totalOrdersCount > 0 ? totalRevenue / totalOrdersCount : 0;
+  const analyticsData = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const currentWeekStart = new Date(now);
+    currentWeekStart.setDate(now.getDate() - now.getDay()); // Sunday
+    const currentMonthStr = todayStr.slice(0, 7); // YYYY-MM
 
-    // Sales by Product Category (Simplified from items)
+    let salesToday = 0;
+    let salesWeek = 0;
+    let salesMonth = 0;
+    let totalRevenue = 0;
+    let outstandingReceivables = 0;
     const categorySales: Record<string, number> = {};
+    const segmentRevenue: Record<string, number> = { 'VIP': 0, 'Loyal': 0, 'New': 0, 'Regular': 0 };
+    const agingBuckets: Record<string, number> = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
+
+    // 1. Metrics & Aging
     orders.forEach(o => {
         if (o.status === 'CANCELLED') return;
+
+        const orderDate = new Date(o.date);
+        const amt = o.totalAmount;
+        totalRevenue += amt;
+
+        // Time periods
+        if (o.date === todayStr) salesToday += amt;
+        if (orderDate >= currentWeekStart) salesWeek += amt;
+        if (o.date.startsWith(currentMonthStr)) salesMonth += amt;
+
+        // Receivables (Pending or Delivered but not Paid)
+        if (o.status === 'PENDING' || o.status === 'DELIVERED') {
+            outstandingReceivables += amt;
+            
+            // Aging
+            const ageDays = Math.floor((now.getTime() - orderDate.getTime()) / (1000 * 60 * 60 * 24));
+            if (ageDays <= 30) agingBuckets['0-30'] += amt;
+            else if (ageDays <= 60) agingBuckets['31-60'] += amt;
+            else if (ageDays <= 90) agingBuckets['61-90'] += amt;
+            else agingBuckets['90+'] += amt;
+        }
+
+        // Product Breakdown
         o.items.forEach(i => {
-            // Rudimentary categorization based on description keywords
             let cat = 'Other';
             const desc = i.description.toLowerCase();
             if (desc.includes('egg')) cat = 'Eggs';
             else if (desc.includes('chicken') || desc.includes('broiler') || desc.includes('bird')) cat = 'Live Birds';
             else if (desc.includes('manure')) cat = 'Manure';
+            else if (desc.includes('cull')) cat = 'Culled Birds';
             
-            const currentTotal = categorySales[cat] || 0;
-            categorySales[cat] = currentTotal + i.total;
+            categorySales[cat] = (categorySales[cat] || 0) + i.total;
         });
     });
 
-    // Monthly Revenue Trend (Last 6 months)
-    const monthlyRevenue = Array.from({ length: 6 }).map((_, i) => {
-        const d = new Date();
-        d.setMonth(d.getMonth() - i);
-        const monthKey = d.toISOString().slice(0, 7); // YYYY-MM
-        const revenue = orders
-            .filter(o => o.date.startsWith(monthKey) && o.status !== 'CANCELLED')
-            .reduce((sum: number, o) => sum + o.totalAmount, 0);
-        return { 
-            month: d.toLocaleString('default', { month: 'short' }), 
-            revenue,
-            order: i // for sorting
-        };
-    }).sort((a, b) => b.order - a.order);
+    // 2. Customer Segment Revenue
+    customers.forEach(c => {
+        const seg = getCustomerSegment(c).label;
+        segmentRevenue[seg] = (segmentRevenue[seg] || 0) + c.totalSpent;
+    });
 
-    return { totalRevenue, avgOrderValue, categorySales, monthlyRevenue };
-  }, [orders]);
+    // 3. Sales Trend (Last 30 Days Daily)
+    const dailySales = Array.from({ length: 30 }).map((_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (29 - i));
+        const dStr = d.toISOString().split('T')[0];
+        const val = orders
+            .filter(o => o.date === dStr && o.status !== 'CANCELLED')
+            .reduce((sum, o) => sum + o.totalAmount, 0);
+        return { date: dStr, value: val };
+    });
+
+    const activeOrderCount = orders.filter(o => o.status !== 'CANCELLED').length;
+    const avgOrderValue = activeOrderCount > 0 ? totalRevenue / activeOrderCount : 0;
+
+    return { 
+        salesToday, 
+        salesWeek, 
+        salesMonth, 
+        outstandingReceivables, 
+        avgOrderValue,
+        categorySales,
+        segmentRevenue,
+        agingBuckets,
+        dailySales
+    };
+  }, [orders, customers]);
 
   // --- Handlers ---
 
@@ -274,13 +437,6 @@ const SalesCRM: React.FC<SalesCRMProps> = ({
   const handleAddItemToOrder = () => {
     if (!newItemLine.description || newItemLine.quantity <= 0) return;
     
-    // Validate Stock if creating new or adding more
-    const maxStock = getCurrentMaxStock();
-    // Simplified validation: only warns based on current stock.
-    if (newItemLine.quantity > maxStock) {
-        alert(`Warning: Quantity exceeds current available stock (${maxStock}). Ensure stock is sufficient before fulfilling.`);
-    }
-
     const newItem: OrderItem = {
         description: newItemLine.description,
         quantity: newItemLine.quantity,
@@ -429,6 +585,13 @@ const SalesCRM: React.FC<SalesCRMProps> = ({
       }
   };
 
+  const handleRunAiAnalysis = async () => {
+    setIsAnalyzing(true);
+    const result = await analyzeSalesPerformance(orders, customers);
+    setAiAnalysis(result);
+    setIsAnalyzing(false);
+  };
+
   const renderKanbanBoard = () => {
       const columns: { id: OrderStatus, label: string, color: string }[] = [
           { id: 'PENDING', label: 'Pending Payment', color: 'bg-orange-50 border-orange-100' },
@@ -486,86 +649,129 @@ const SalesCRM: React.FC<SalesCRMProps> = ({
   };
 
   const renderAnalytics = () => {
-      const maxRev = Math.max(...analyticsData.monthlyRevenue.map(m => m.revenue), 100);
+      const maxProductSales = Math.max(...Object.values(analyticsData.categorySales as Record<string, number>), 1);
       
+      // Preparing Pie Chart Data
+      const pieData = Object.entries(analyticsData.segmentRevenue as Record<string, number>).map(([label, value]) => {
+          let color = '#94a3b8';
+          if (label === 'VIP') color = '#9333ea';
+          if (label === 'Loyal') color = '#2563eb';
+          if (label === 'New') color = '#16a34a';
+          return { label, value: value as number, color };
+      }).filter(d => d.value > 0);
+
+      // Preparing Aging Chart Data (as simple bars logic since we don't have separate component)
+      const agingData = Object.entries(analyticsData.agingBuckets as Record<string, number>);
+      const maxAging = Math.max(...Object.values(analyticsData.agingBuckets as Record<string, number>), 1);
+
       return (
           <div className="space-y-6 animate-in fade-in duration-300">
-              {/* Summary Metrics */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Row 1: Key Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                   <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                       <div className="flex justify-between items-start mb-2">
-                          <p className="text-xs font-bold text-slate-500 uppercase">Total Revenue</p>
-                          <div className="p-2 bg-green-50 text-green-600 rounded-lg"><TrendingUp size={20}/></div>
+                          <p className="text-xs font-bold text-slate-500 uppercase">Sales Today</p>
+                          <div className="p-1.5 bg-green-50 text-green-600 rounded-lg"><TrendingUp size={16}/></div>
                       </div>
-                      <h3 className="text-2xl font-bold text-slate-900">{currencySymbol}{analyticsData.totalRevenue.toLocaleString()}</h3>
-                      <p className="text-xs text-slate-400 mt-1">Lifetime sales volume</p>
+                      <h3 className="text-2xl font-bold text-slate-900">{currencySymbol}{analyticsData.salesToday.toLocaleString()}</h3>
+                  </div>
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                      <div className="flex justify-between items-start mb-2">
+                          <p className="text-xs font-bold text-slate-500 uppercase">This Month</p>
+                          <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg"><Calendar size={16}/></div>
+                      </div>
+                      <h3 className="text-2xl font-bold text-slate-900">{currencySymbol}{analyticsData.salesMonth.toLocaleString()}</h3>
+                  </div>
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                      <div className="flex justify-between items-start mb-2">
+                          <p className="text-xs font-bold text-slate-500 uppercase">Receivables</p>
+                          <div className="p-1.5 bg-orange-50 text-orange-600 rounded-lg"><AlertCircle size={16}/></div>
+                      </div>
+                      <h3 className="text-2xl font-bold text-slate-900">{currencySymbol}{analyticsData.outstandingReceivables.toLocaleString()}</h3>
+                      <p className="text-xs text-orange-600 mt-1 font-medium">Outstanding</p>
                   </div>
                   <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                       <div className="flex justify-between items-start mb-2">
                           <p className="text-xs font-bold text-slate-500 uppercase">Avg Order Value</p>
-                          <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><BarChart2 size={20}/></div>
+                          <div className="p-1.5 bg-purple-50 text-purple-600 rounded-lg"><BarChart2 size={16}/></div>
                       </div>
                       <h3 className="text-2xl font-bold text-slate-900">{currencySymbol}{analyticsData.avgOrderValue.toLocaleString(undefined, {maximumFractionDigits: 0})}</h3>
-                      <p className="text-xs text-slate-400 mt-1">Per transaction average</p>
-                  </div>
-                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                      <div className="flex justify-between items-start mb-2">
-                          <p className="text-xs font-bold text-slate-500 uppercase">Top Category</p>
-                          <div className="p-2 bg-purple-50 text-purple-600 rounded-lg"><Award size={20}/></div>
-                      </div>
-                      <h3 className="text-2xl font-bold text-slate-900">
-                          {Object.entries(analyticsData.categorySales).sort((a,b) => (b[1] as number)-(a[1] as number))[0]?.[0] || 'N/A'}
-                      </h3>
-                      <p className="text-xs text-slate-400 mt-1">Highest revenue driver</p>
                   </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Revenue Chart */}
-                  <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                      <h3 className="font-bold text-slate-900 mb-6">Revenue Trend (6 Months)</h3>
-                      <div className="h-64 flex items-end justify-between gap-2">
-                          {analyticsData.monthlyRevenue.map((data, idx) => (
-                              <div key={idx} className="flex-1 flex flex-col justify-end items-center group relative">
-                                  <div className="mb-2 opacity-0 group-hover:opacity-100 absolute bottom-full text-xs font-bold bg-slate-800 text-white px-2 py-1 rounded transition-opacity">
-                                      {currencySymbol}{data.revenue.toLocaleString()}
+              {/* Row 2: Charts (Trend & Aging) */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-80">
+                  <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                      <h3 className="font-bold text-slate-900 mb-6 text-sm flex items-center gap-2">
+                          <TrendingUp size={16} className="text-emerald-500"/> Revenue Trend (Last 30 Days)
+                      </h3>
+                      <div className="flex-1 min-h-0">
+                          <SalesLineChart data={analyticsData.dailySales} />
+                      </div>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                      <h3 className="font-bold text-slate-900 mb-6 text-sm flex items-center gap-2">
+                          <Clock size={16} className="text-orange-500"/> Receivables Aging
+                      </h3>
+                      <div className="flex-1 flex items-end justify-between gap-4">
+                          {agingData.map(([bucket, amount]) => (
+                              <div key={bucket} className="flex-1 flex flex-col justify-end items-center group relative w-full">
+                                  <div className="mb-2 opacity-0 group-hover:opacity-100 absolute bottom-full text-[10px] font-bold bg-slate-800 text-white px-2 py-1 rounded transition-opacity whitespace-nowrap z-10">
+                                      {currencySymbol}{amount.toLocaleString()}
                                   </div>
                                   <div 
-                                    className="w-full bg-primary-500 hover:bg-primary-600 rounded-t-lg transition-all relative"
-                                    style={{ height: `${(data.revenue / maxRev) * 100}%`, minHeight: '4px' }}
+                                    className={`w-full rounded-t-md transition-all ${bucket === '90+' ? 'bg-red-500' : bucket === '61-90' ? 'bg-orange-500' : 'bg-blue-500'}`}
+                                    style={{ height: `${(amount / maxAging) * 100}%`, minHeight: '4px' }}
                                   ></div>
-                                  <div className="mt-2 text-xs text-slate-500 font-medium">{data.month}</div>
+                                  <div className="mt-2 text-[10px] text-slate-500 font-bold">{bucket}d</div>
                               </div>
                           ))}
                       </div>
                   </div>
+              </div>
 
+              {/* Row 3: Product & Segments */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Category Breakdown */}
                   <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                      <h3 className="font-bold text-slate-900 mb-6">Sales by Product Type</h3>
+                      <h3 className="font-bold text-slate-900 mb-6 text-sm flex items-center gap-2">
+                          <ShoppingBag size={16} className="text-blue-500"/> Sales by Product
+                      </h3>
                       <div className="space-y-4">
-                          {Object.entries(analyticsData.categorySales)
-                              .sort((a, b) => (b[1] as number) - (a[1] as number))
-                              .map(([cat, amountVal], idx) => {
-                                  const amount = amountVal as number;
-                                  const total = (Object.values(analyticsData.categorySales) as number[]).reduce((a, b) => a + b, 0);
-                                  const pct = total > 0 ? (amount / total) * 100 : 0;
+                          {Object.entries(analyticsData.categorySales as Record<string, number>)
+                              .sort((a, b) => b[1] - a[1])
+                              .map(([cat, amount], idx) => {
+                                  const pct = (amount / maxProductSales) * 100;
                                   return (
                                       <div key={idx}>
-                                          <div className="flex justify-between text-sm mb-1">
+                                          <div className="flex justify-between text-sm mb-1.5">
                                               <span className="font-medium text-slate-700">{cat}</span>
-                                              <span className="text-slate-500">{currencySymbol}{amount.toLocaleString()} ({pct.toFixed(0)}%)</span>
+                                              <span className="font-bold text-slate-900">{currencySymbol}{amount.toLocaleString()}</span>
                                           </div>
                                           <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                                               <div 
                                                 className="h-full bg-blue-500 rounded-full"
-                                                style={{ width: `${pct}%`, opacity: 1 - (idx * 0.15) }}
+                                                style={{ width: `${pct}%` }}
                                               ></div>
                                           </div>
                                       </div>
                                   );
                               })
                           }
+                          {Object.keys(analyticsData.categorySales).length === 0 && (
+                              <div className="text-center text-slate-400 text-sm py-8">No sales data recorded.</div>
+                          )}
+                      </div>
+                  </div>
+
+                  {/* Customer Segments */}
+                  <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                      <h3 className="font-bold text-slate-900 mb-6 text-sm flex items-center gap-2">
+                          <Users size={16} className="text-purple-500"/> Revenue by Customer Segment
+                      </h3>
+                      <div className="h-64">
+                          <SegmentPieChart data={pieData} />
                       </div>
                   </div>
               </div>
@@ -582,24 +788,30 @@ const SalesCRM: React.FC<SalesCRMProps> = ({
           <p className="text-slate-500 text-sm mt-1">Manage customer orders, invoices, and relationships.</p>
         </div>
         
-        <div className="bg-white p-1 rounded-lg border border-slate-200 flex">
+        <div className="bg-white p-1 rounded-lg border border-slate-200 flex overflow-x-auto">
            <button 
              onClick={() => setActiveTab('ORDERS')}
-             className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'ORDERS' ? 'bg-primary-50 text-primary-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+             className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'ORDERS' ? 'bg-primary-50 text-primary-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
            >
              <ShoppingBag size={16} /> Orders
            </button>
            <button 
              onClick={() => setActiveTab('CUSTOMERS')}
-             className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'CUSTOMERS' ? 'bg-primary-50 text-primary-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+             className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'CUSTOMERS' ? 'bg-primary-50 text-primary-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
            >
              <Users size={16} /> Customers
            </button>
            <button 
              onClick={() => setActiveTab('ANALYTICS')}
-             className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'ANALYTICS' ? 'bg-primary-50 text-primary-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+             className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'ANALYTICS' ? 'bg-primary-50 text-primary-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
            >
              <BarChart2 size={16} /> Analytics
+           </button>
+           <button 
+             onClick={() => setActiveTab('AI')}
+             className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'AI' ? 'bg-purple-50 text-purple-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+           >
+             <BrainCircuit size={16} /> AI Insights
            </button>
         </div>
       </div>
@@ -740,6 +952,84 @@ const SalesCRM: React.FC<SalesCRMProps> = ({
 
       {/* ANALYTICS TAB */}
       {activeTab === 'ANALYTICS' && renderAnalytics()}
+
+      {/* AI INSIGHTS TAB */}
+      {activeTab === 'AI' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+           <div className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-xl p-8 text-white shadow-xl">
+              <div className="flex flex-col md:flex-row gap-6 items-start md:items-center justify-between">
+                 <div className="flex items-start gap-4">
+                    <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm shadow-inner">
+                       <BrainCircuit size={32} />
+                    </div>
+                    <div>
+                       <h2 className="text-2xl font-bold">Sales & Revenue Analyst</h2>
+                       <p className="text-purple-100 mt-1 max-w-xl text-sm leading-relaxed opacity-90">
+                          Use AI to analyze your sales patterns, identify your best customers, and uncover new revenue opportunities.
+                       </p>
+                    </div>
+                 </div>
+                 <button 
+                   onClick={handleRunAiAnalysis}
+                   disabled={isAnalyzing}
+                   className="bg-white text-purple-700 px-6 py-3 rounded-lg font-bold shadow-lg hover:shadow-xl transition-all flex items-center gap-2 hover:bg-purple-50 disabled:opacity-70 disabled:cursor-not-allowed"
+                 >
+                    {isAnalyzing ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                    {isAnalyzing ? 'Analyzing Sales Data...' : 'Generate Sales Report'}
+                 </button>
+              </div>
+           </div>
+
+           {aiAnalysis && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4 duration-500">
+                 {/* Analysis Summary */}
+                 <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-4 pb-4 border-b border-slate-100">
+                       <FileText size={20} className="text-slate-500" />
+                       <h3 className="font-bold text-slate-800">Sales Summary</h3>
+                    </div>
+                    <div className="prose prose-sm text-slate-600 max-w-none leading-relaxed">
+                       {aiAnalysis.analysis.split('\n').map((line, i) => (
+                          <p key={i} className="mb-2">{line}</p>
+                       ))}
+                    </div>
+                 </div>
+
+                 {/* Growth & Strategies */}
+                 <div className="space-y-6">
+                    <div className={`p-6 rounded-xl border flex flex-col items-center justify-center text-center shadow-sm ${
+                        aiAnalysis.alertLevel === 'HIGH' ? 'bg-green-50 border-green-200 text-green-800' :
+                        aiAnalysis.alertLevel === 'MEDIUM' ? 'bg-blue-50 border-blue-200 text-blue-800' :
+                        'bg-slate-50 border-slate-200 text-slate-800'
+                    }`}>
+                        <div className={`p-3 rounded-full mb-3 ${
+                            aiAnalysis.alertLevel === 'HIGH' ? 'bg-green-100' :
+                            aiAnalysis.alertLevel === 'MEDIUM' ? 'bg-blue-100' : 'bg-slate-100'
+                        }`}>
+                            <Target size={24} />
+                        </div>
+                        <h4 className="font-bold text-lg">Growth Potential</h4>
+                        <p className="text-2xl font-black mt-1">{aiAnalysis.alertLevel}</p>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                       <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                          <Lightbulb size={18} className="text-yellow-500" /> Strategies
+                       </h3>
+                       <ul className="space-y-3">
+                          {aiAnalysis.recommendations.map((rec, i) => (
+                             <li key={i} className="flex gap-3 text-sm text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                <span className="font-bold text-slate-400">{i+1}.</span>
+                                {rec}
+                             </li>
+                          ))}
+                       </ul>
+                    </div>
+                 </div>
+              </div>
+           )}
+        </div>
+      )}
 
       {/* CUSTOMERS TAB */}
       {activeTab === 'CUSTOMERS' && (
@@ -1157,7 +1447,7 @@ const SalesCRM: React.FC<SalesCRMProps> = ({
                                                     onClick={() => handleRemoveItemFromOrder(idx)}
                                                     className="text-slate-400 hover:text-red-500 transition-colors"
                                                 >
-                                                    <Trash size={12} />
+                                                    <Trash2 size={12} />
                                                 </button>
                                             </td>
                                         </tr>

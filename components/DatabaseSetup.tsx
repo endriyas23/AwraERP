@@ -55,7 +55,7 @@ create policy "Public Access Inventory" on inventory for all using (true) with c
 /* 4. Refresh Supabase Schema Cache */
 NOTIFY pgrst, 'reload config';`;
 
-  const fullSqlCode = `/* Run this in your Supabase SQL Editor to create tables, triggers and fix RLS policies */
+  const fullSqlCode = `/* Run this in your Supabase SQL Editor to create tables, triggers and fix RLS permissions */
 
 /* --- CORE DATA TABLES --- */
 
@@ -300,6 +300,7 @@ create policy "Public Access Tasks" on tasks for all using (true) with check (tr
 drop policy if exists "Public Access Payroll" on payroll_runs;
 create policy "Public Access Payroll" on payroll_runs for all using (true) with check (true);
 
+/* RLS POLICY FIX: Settings Table */
 drop policy if exists "Public Access Settings" on settings;
 create policy "Public Access Settings" on settings for all using (true) with check (true);
 
@@ -309,6 +310,9 @@ create policy "Public profiles are viewable by everyone" on profiles for select 
 
 drop policy if exists "Users can update own profile" on profiles;
 create policy "Users can update own profile" on profiles for update using (auth.uid() = id);
+
+drop policy if exists "Users can insert own profile" on profiles;
+create policy "Users can insert own profile" on profiles for insert with check (auth.uid() = id);
 
 /* --- CLEANUP & REFRESH --- */
 NOTIFY pgrst, 'reload config';
@@ -333,7 +337,7 @@ NOTIFY pgrst, 'reload config';
             <div>
               <h2 className="text-xl font-bold text-slate-900">Database & Schema Setup</h2>
               <p className="text-sm text-slate-500">
-                Fix permissions and create missing tables.
+                Fix missing tables or RLS permission errors (Code 42501).
               </p>
             </div>
           </div>

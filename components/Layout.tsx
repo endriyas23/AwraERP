@@ -36,7 +36,7 @@ interface LayoutProps {
   onMarkAsRead?: (id: string) => void;
   onClearAllNotifications?: () => void;
   currentUser?: CurrentUser;
-  onUpdateUser?: (user: CurrentUser) => void;
+  onUpdateUser?: (user: CurrentUser, newPassword?: string) => void;
   onLogout?: () => void;
 }
 
@@ -61,6 +61,7 @@ const Layout: React.FC<LayoutProps> = ({
 
   // Profile Form State
   const [profileForm, setProfileForm] = useState<Partial<CurrentUser>>({});
+  const [newPassword, setNewPassword] = useState('');
 
   useEffect(() => {
     if (currentUser) {
@@ -92,9 +93,10 @@ const Layout: React.FC<LayoutProps> = ({
       onUpdateUser({
         ...currentUser,
         ...profileForm
-      } as CurrentUser);
+      } as CurrentUser, newPassword);
     }
     setIsProfileModalOpen(false);
+    setNewPassword('');
   };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -401,6 +403,8 @@ const Layout: React.FC<LayoutProps> = ({
                           <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                           <input 
                             type="password" 
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
                             placeholder="New password (optional)"
                             className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
                           />

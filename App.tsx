@@ -8,7 +8,7 @@ import {
   Customer, 
   Employee, 
   HrTask, 
-  PayrollRun,
+  PayrollRun, 
   FarmProfile, 
   ViewState, 
   AppNotification, 
@@ -102,20 +102,94 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const updateUserFromSession = (user: any) => {
-    setCurrentUser({
-      id: user.id,
-      name: user.user_metadata?.name || user.email?.split('@')[0] || 'Farm Manager',
-      email: user.email || '',
-      role: 'Admin', // Defaulting to Admin for now as it's single tenant usually
-      avatar: user.user_metadata?.avatar_url || ''
-    });
+  const updateUserFromSession = async (user: any) => {
+    try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        setCurrentUser({
+          id: user.id,
+          name: profile?.full_name || user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'Farm Manager',
+          email: user.email || '',
+          role: profile?.role || 'Admin',
+          avatar: profile?.avatar_url || user.user_metadata?.avatar_url || '',
+          phone: user.phone || ''
+        });
+    } catch (e) {
+        // Fallback if profile table fetch fails
+        setCurrentUser({
+          id: user.id,
+          name: user.user_metadata?.name || user.email?.split('@')[0] || 'Farm Manager',
+          email: user.email || '',
+          role: 'Admin',
+          avatar: user.user_metadata?.avatar_url || ''
+        });
+    }
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setSession(null);
     setCurrentView('DASHBOARD');
+  };
+
+  const handleUpdateUser = async (updatedUser: CurrentUser, newPassword?: string) => {
+    if (updatedUser.id === 'guest') {
+        alert("Cannot update guest profile. Please sign up or log in.");
+        return;
+    }
+
+    setCurrentUser(updatedUser);
+
+    try {
+      // 1. Upsert Profile Data
+      const updates: any = {
+        id: updatedUser.id,
+        full_name: updatedUser.name,
+        avatar_url: updatedUser.avatar,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase.from('profiles').upsert(updates);
+      if (error) {
+          console.error("Error updating profiles table:", JSON.stringify(error));
+          if (error.code === '42501' || error.code === '42P01') {
+             // Silently ignore for profile updates to avoid blocking flow, 
+             // but log it. The main settings update handles the modal.
+          }
+      }
+
+      // 2. Update Auth User (Email/Password/Metadata)
+      const authUpdates: any = {
+        data: {
+            full_name: updatedUser.name,
+            avatar_url: updatedUser.avatar
+        }
+      };
+      
+      if (newPassword && newPassword.trim() !== '') {
+        authUpdates.password = newPassword;
+      }
+      
+      if (updatedUser.email && updatedUser.email !== session?.user.email) {
+          authUpdates.email = updatedUser.email;
+      }
+
+      const { error: authError } = await supabase.auth.updateUser(authUpdates);
+      
+      if (authError) {
+          throw authError;
+      } else {
+          if(newPassword) alert("Password updated successfully.");
+      }
+
+    } catch (error: any) {
+       console.error('Error updating profile:', error.message || error);
+       alert(`Error updating profile: ${error.message || 'Check console for details.'}`);
+    }
   };
 
   // --- 2. Data Fetching (Only if Authenticated) ---
@@ -136,7 +210,7 @@ const App: React.FC = () => {
         // If table doesn't exist, prompt setup
         if (flocksError.code === '42P01' || flocksError.message.includes('does not exist')) {
             setShowDbSetup(true);
-            setFlocks(MOCK_FLOCKS); // Fallback to mock if DB not ready
+            setFlocks(MOCK_FLOCKS); 
         }
       } else if (flocksData) {
         setFlocks(flocksData as Flock[]);
@@ -205,7 +279,7 @@ const App: React.FC = () => {
     };
 
     fetchData();
-  }, [session]); // Run when session becomes available
+  }, [session]);
 
   // Handlers
   const handleNavigate = (view: ViewState) => {
@@ -225,21 +299,22 @@ const App: React.FC = () => {
 
   // Flock
   const handleAddFlock = async (flock: Flock) => {
-    // Optimistic Update
     setFlocks(prev => [flock, ...prev]);
     
     const { error } = await supabase.from('flocks').insert([flock]);
     if (error) {
       console.error('Supabase error adding flock:', error);
-      alert('Failed to save flock to database. Please check connection.');
-      // Revert if needed, or rely on next fetch
+      if (error.code === '42P01' || error.code === '42501') {
+          setShowDbSetup(true);
+      } else {
+          alert('Failed to save flock to database. Please check connection.');
+      }
     }
   };
 
   const handleUpdateFlock = async (updatedFlock: Flock) => {
     setFlocks(prev => prev.map(f => f.id === updatedFlock.id ? updatedFlock : f));
     
-    // We remove the UI-only fields if they exist implicitly, but Flock type matches DB
     const { error } = await supabase
       .from('flocks')
       .update(updatedFlock)
@@ -247,6 +322,7 @@ const App: React.FC = () => {
 
     if (error) {
       console.error('Supabase error updating flock:', error);
+      if (error.code === '42501') setShowDbSetup(true);
     }
   };
 
@@ -267,7 +343,6 @@ const App: React.FC = () => {
   const prepareInventoryItemForDb = (item: InventoryItem) => {
     return {
       ...item,
-      // Ensure arrays are valid arrays for JSONB
       maintenanceLogs: item.maintenanceLogs || [],
       usageLogs: item.usageLogs || [],
       targetBirdType: item.targetBirdType || null,
@@ -287,8 +362,7 @@ const App: React.FC = () => {
     const { error } = await supabase.from('inventory').insert([dbItem]);
     if (error) {
       console.error('Error adding inventory:', JSON.stringify(error, null, 2));
-      if (error.code === '42P01') {
-         alert("Database schema outdated. New fields (e.g., maintenanceLogs) or table missing. Opening setup wizard...");
+      if (error.code === '42P01' || error.code === '42501') {
          setShowDbSetup(true);
       }
     }
@@ -300,7 +374,7 @@ const App: React.FC = () => {
     const { error } = await supabase.from('inventory').update(dbItem).eq('id', item.id);
     if (error) {
         console.error('Error updating inventory:', JSON.stringify(error, null, 2));
-        if (error.code === '42P01') setShowDbSetup(true);
+        if (error.code === '42P01' || error.code === '42501') setShowDbSetup(true);
     }
   };
 
@@ -314,7 +388,11 @@ const App: React.FC = () => {
   const handleAddTransaction = async (tx: Transaction) => {
     setTransactions(prev => [tx, ...prev]);
     const { error } = await supabase.from('transactions').insert([tx]);
-    if (error && error.code !== '42P01') console.error('Error saving transaction:', error);
+    if (error && (error.code === '42P01' || error.code === '42501')) {
+        setShowDbSetup(true);
+    } else if (error) {
+        console.error('Error saving transaction:', error);
+    }
   };
 
   const handleUpdateTransaction = async (tx: Transaction) => {
@@ -336,7 +414,7 @@ const App: React.FC = () => {
     const { error } = await supabase.from('sales_orders').insert([order]);
     if (error) {
         console.error('Error saving order:', error);
-        if (error.code === '42P01') {
+        if (error.code === '42P01' || error.code === '42501') {
             setShowDbSetup(true);
         }
     } else {
@@ -462,7 +540,7 @@ const App: React.FC = () => {
     const { error } = await supabase.from('payroll_runs').insert([run]);
     if (error) {
         console.error('Error adding payroll run:', error);
-        if (error.code === '42P01') setShowDbSetup(true);
+        if (error.code === '42P01' || error.code === '42501') setShowDbSetup(true);
     }
   };
 
@@ -488,8 +566,11 @@ const App: React.FC = () => {
     
     if (error) {
         console.error("Error saving settings:", JSON.stringify(error, null, 2));
-        if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        // Handle Missing Table (42P01) AND RLS Policy Violation (42501)
+        if (error.code === '42P01' || error.code === '42501' || error.message?.includes('does not exist')) {
             setShowDbSetup(true);
+        } else {
+            alert(`Error saving settings: ${error.message}`);
         }
     }
   };
@@ -689,7 +770,7 @@ const App: React.FC = () => {
         onMarkAsRead={handleMarkAsRead}
         onClearAllNotifications={handleClearNotifications}
         currentUser={currentUser}
-        onUpdateUser={setCurrentUser}
+        onUpdateUser={handleUpdateUser}
         onLogout={handleLogout}
       >
         {renderContent()}
