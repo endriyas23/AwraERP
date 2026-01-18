@@ -91,7 +91,7 @@ const DashboardAreaChart = ({
       const p0 = pts[i === 0 ? 0 : i - 1];
       const p1 = pts[i];
       const p2 = pts[i + 1];
-      const p3 = pts[i + 2] || p2; // Defined p3 to fix reference error
+      const p3 = pts[i + 2] || p2;
       
       const cp1x = p1.x + (p2.x - p0.x) / 6;
       const cp1y = p1.y + (p2.y - p0.y) / 6;
@@ -136,7 +136,6 @@ const DashboardAreaChart = ({
             <stop offset="100%" stopColor={color} stopOpacity="0" />
           </linearGradient>
         </defs>
-        {/* Grid */}
         {[0, 0.25, 0.5, 0.75, 1].map(t => {
             const y = padding.top + t * (chartHeight - padding.top - padding.bottom);
             const v = maxVal * (1-t);
@@ -245,7 +244,6 @@ const FinancialLineChart = ({
       onMouseLeave={() => setHoverIndex(null)}
     >
       <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-full overflow-visible">
-        {/* Grid */}
         {[0, 0.25, 0.5, 0.75, 1].map(t => {
             const y = padding.top + t * (chartHeight - padding.top - padding.bottom);
             const val = maxVal * (1 - t);
@@ -262,12 +260,10 @@ const FinancialLineChart = ({
         <path d={generateLine('income')} fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
         <path d={generateLine('expense')} fill="none" stroke="#ef4444" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
 
-        {/* Dots */}
         {data.map((d, i) => (
             <g key={i}>
                 <circle cx={getX(i)} cy={getY(d.income)} r="4" fill="#10b981" stroke="white" strokeWidth="1.5" className="opacity-0 group-hover:opacity-100 transition-opacity" />
                 <circle cx={getX(i)} cy={getY(d.expense)} r="4" fill="#ef4444" stroke="white" strokeWidth="1.5" className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                {/* Labels */}
                 {i % Math.ceil(data.length/6) === 0 && (
                     <text x={getX(i)} y={chartHeight - 5} textAnchor="middle" className="text-[10px] fill-slate-400 font-medium">{d.label}</text>
                 )}
@@ -327,7 +323,6 @@ const FeedBarChart = ({
     return (
       <div className="relative w-full h-full select-none">
         <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-full overflow-visible">
-          {/* Grid */}
           {[0, 0.25, 0.5, 0.75, 1].map(t => {
               const y = padding.top + t * (chartHeight - padding.top - padding.bottom);
               const val = maxVal * (1 - t);
@@ -359,8 +354,6 @@ const FeedBarChart = ({
                   className="opacity-80 group-hover:opacity-100 transition-opacity"
                 />
                 <text x={centerX} y={chartHeight - 20} textAnchor="middle" className="text-[10px] fill-slate-500 font-medium" transform={`rotate(-45, ${centerX}, ${chartHeight - 20})`}>{d.label}</text>
-                
-                {/* Tooltip via Title for simplicity in this SVG or could be overlay */}
                 <title>{d.label}: {d.value} kg</title>
               </g>
             );
@@ -422,7 +415,6 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
 
   const activeFlocks = useMemo(() => flocks.filter(f => f.status === FlockStatus.ACTIVE), [flocks]);
   
-  // 1. Total Birds by Age Group
   const birdDemographics = useMemo(() => {
       const stats: Record<string, number> = {};
       let total = 0;
@@ -434,12 +426,10 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
       return { stats, total };
   }, [activeFlocks]);
 
-  // 2. Egg Production (Today, Week, Month)
   const eggProduction = useMemo(() => {
       let today = 0;
       let week = 0;
       let month = 0;
-      
       const now = new Date();
       const todayStr = now.toISOString().split('T')[0];
       const sevenDaysAgo = new Date(now);
@@ -448,14 +438,8 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
       activeFlocks.filter(f => f.type === BirdType.LAYER).forEach(f => {
           f.logs.forEach(log => {
               const logDate = new Date(log.date);
-              
-              // Today
               if (log.date === todayStr) today += (log.eggProduction || 0);
-              
-              // Week
               if (logDate >= sevenDaysAgo) week += (log.eggProduction || 0);
-              
-              // Month
               if (logDate.getMonth() === now.getMonth() && logDate.getFullYear() === now.getFullYear()) {
                   month += (log.eggProduction || 0);
               }
@@ -464,7 +448,6 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
       return { today, week, month };
   }, [activeFlocks]);
 
-  // 3. Feed Consumption vs Standard & By Flock
   const feedStats = useMemo(() => {
       let totalFeedToday = 0;
       const flockUsage: { label: string, value: number }[] = [];
@@ -477,27 +460,28 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
           flockUsage.push({ label: f.name, value: feed });
       });
 
-      // Simple Standard Estimation: 110g/bird avg for layers, 150g for broilers
       const estimatedStandardKg = activeFlocks.reduce((acc: number, f) => {
           const stdPerBird = f.type === BirdType.BROILER ? 0.15 : 0.11;
           return acc + (f.currentCount * stdPerBird);
       }, 0);
 
       const status = totalFeedToday > estimatedStandardKg * 1.1 ? 'Over' : totalFeedToday < estimatedStandardKg * 0.9 ? 'Under' : 'On Track';
-
       return { totalFeedToday, estimatedStandardKg, status, flockUsage };
   }, [activeFlocks]);
 
-  // 4. Mortality Rate (Global) & Profit Margin
   const healthAndFinance = useMemo(() => {
+      // REFIX: Mortality Calculation logic
+      // Mortality Rate should ONLY count biological losses.
+      // Mortality Birds = (Initial Count - Current Count - Total Birds Sold)
       const totalInitial = activeFlocks.reduce((acc: number, f) => acc + f.initialCount, 0);
       const totalCurrent = activeFlocks.reduce((acc: number, f) => acc + f.currentCount, 0);
-      const mortalityRate = totalInitial > 0 ? ((totalInitial - totalCurrent) / totalInitial) * 100 : 0;
+      const totalSold = activeFlocks.reduce((acc: number, f) => acc + (f.totalSold || 0), 0);
+      
+      const mortalityBirds = Math.max(0, totalInitial - totalCurrent - totalSold);
+      const mortalityRate = totalInitial > 0 ? (mortalityBirds / totalInitial) * 100 : 0;
 
-      // Financials
       let revenue = 0;
       let expenses = 0;
-      
       transactions.forEach(t => {
           if (t.type === 'INCOME') revenue += t.amount;
           else expenses += t.amount;
@@ -505,14 +489,12 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
 
       const profit = revenue - expenses;
       const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
-      const cashBalance = profit; // Simplified cash balance
+      const cashBalance = profit;
 
       return { mortalityRate, revenue, expenses, profit, margin, cashBalance };
   }, [activeFlocks, transactions]);
 
-  // 5. Unit Economics
   const unitEconomics = useMemo(() => {
-      // Cost per Egg (Approximation based on Layer Flocks)
       const layerFlockIds = activeFlocks.filter(f => f.type === BirdType.LAYER).map(f => f.id);
       const layerExpenses = transactions
           .filter(t => t.type === 'EXPENSE' && (t.flockId && layerFlockIds.includes(t.flockId) || t.category === 'Feed'))
@@ -521,7 +503,6 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
       const totalEggs = activeFlocks.reduce((acc: number, f) => acc + f.logs.reduce((sum: number, l) => sum + (l.eggProduction || 0), 0), 0);
       const costPerEgg = totalEggs > 0 ? layerExpenses / totalEggs : 0;
 
-      // Cost per Kg Live Weight (Broilers)
       const broilerFlocks = activeFlocks.filter(f => f.type === BirdType.BROILER);
       const broilerExpenses = transactions
           .filter(t => t.type === 'EXPENSE' && (t.flockId && broilerFlocks.map(b => b.id).includes(t.flockId)))
@@ -534,13 +515,10 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
       }, 0);
 
       const costPerKg = totalBiomassKg > 0 ? broilerExpenses / totalBiomassKg : 0;
-
       return { costPerEgg, costPerKg };
   }, [activeFlocks, transactions]);
 
-  // 6. Graphs Data
   const chartsData = useMemo(() => {
-      // Egg Production Trend (Last 7 Days)
       const eggTrend = [];
       for(let i=6; i>=0; i--) {
           const d = new Date();
@@ -553,14 +531,12 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
           eggTrend.push({ label: d.toLocaleDateString('en-US', {weekday:'short'}), value: val });
       }
 
-      // Revenue vs Expenses (Last 6 Months)
       const financialTrend = [];
       for(let i=5; i>=0; i--) {
           const d = new Date();
           d.setMonth(d.getMonth() - i);
           const month = d.getMonth();
           const year = d.getFullYear();
-          
           let inc = 0, exp = 0;
           transactions.forEach(t => {
               const td = new Date(t.date);
@@ -571,20 +547,16 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
           });
           financialTrend.push({ label: d.toLocaleString('default', {month:'short'}), income: inc, expense: exp });
       }
-
       return { eggTrend, financialTrend };
   }, [activeFlocks, transactions]);
 
-  // 7. System Alerts & Recent Activity
   const systemAlerts = useMemo(() => {
     const list = [];
-    // Inventory
     inventoryItems.forEach(item => {
         if (item.quantity <= item.minLevel) {
             list.push({ type: 'STOCK', level: 'HIGH', message: `Low Stock: ${item.name} (${item.quantity} ${item.unit})`, id: item.id });
         }
     });
-    // Tasks
     const today = new Date().toISOString().split('T')[0];
     tasks.forEach(task => {
         if (task.status !== 'COMPLETED' && task.dueDate < today) {
@@ -593,28 +565,34 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
             list.push({ type: 'TASK', level: 'LOW', message: `Due Today: ${task.title}`, id: task.id });
         }
     });
-    // Flocks
     activeFlocks.forEach(flock => {
-         const mortality = flock.initialCount > 0 ? (flock.initialCount - flock.currentCount) / flock.initialCount : 0;
-         if (mortality > 0.05) {
-             list.push({ type: 'HEALTH', level: 'HIGH', message: `High Mortality: ${flock.name} (${(mortality*100).toFixed(1)}%)`, id: flock.id });
+         // Fix: Explicitly cast to number to ensure arithmetic operations work correctly on operands.
+         // This avoids TS error "The left-hand side of an arithmetic operation must be of type 'any', 'number'..."
+         const fInitCount = Number(flock.initialCount);
+         const fCurrCount = Number(flock.currentCount);
+         const fSoldTotal = Number(flock.totalSold || 0);
+         
+         // Fix for arithmetic operation type error on line 655
+         const bioLossesCount = Math.max(0, (fInitCount as number) - (fCurrCount as number) - (fSoldTotal as number));
+         const mRateRaw = fInitCount > 0 ? (bioLossesCount / fInitCount) : 0;
+         if (mRateRaw > 0.05) {
+             list.push({ 
+               type: 'HEALTH', 
+               level: 'HIGH', 
+               message: `High Mortality: ${flock.name} (${(mRateRaw * 100).toFixed(1)}%)`, 
+               id: flock.id 
+             });
          }
     });
-    return list.slice(0, 5); // Limit to 5
+    return list.slice(0, 5);
   }, [inventoryItems, tasks, activeFlocks]);
 
   const recentActivity = useMemo(() => {
     return transactions.slice(0, 6).map(t => ({
-        id: t.id,
-        title: t.category,
-        desc: t.description,
-        amount: t.amount,
-        type: t.type,
-        date: t.date
+        id: t.id, title: t.category, desc: t.description, amount: t.amount, type: t.type, date: t.date
     }));
   }, [transactions]);
 
-  // Greeting
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good Morning';
@@ -665,7 +643,6 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
 
       {/* Row 1: High Level KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Active Birds Breakdown */}
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
                   <Bird size={14} /> Population by Stage
@@ -676,7 +653,7 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
                           <span className="text-slate-600">{stage}</span>
                           <div className="flex items-center gap-2">
                               <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                  <div className={`h-full rounded-full ${idx % 2 === 0 ? 'bg-blue-500' : 'bg-primary-500'}`} style={{width: `${(count / birdDemographics.total)*100}%`}}></div>
+                                  <div className={`h-full rounded-full ${idx % 2 === 0 ? 'bg-blue-500' : 'bg-primary-500'}`} style={{width: `${(count / (birdDemographics.total || 1))*100}%`}}></div>
                               </div>
                               <span className="font-bold text-slate-900">{count.toLocaleString()}</span>
                           </div>
@@ -685,7 +662,6 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
               </div>
           </div>
 
-          {/* Mortality Gauge */}
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
               <div>
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-2">
@@ -694,17 +670,16 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
                   <div className="text-3xl font-bold text-slate-900 mt-2">
                       {healthAndFinance.mortalityRate.toFixed(2)}%
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">Lifetime average</p>
+                  <p className="text-xs text-slate-500 mt-1">Biological losses only</p>
               </div>
               <div className="w-full bg-slate-100 h-2 rounded-full mt-4 overflow-hidden">
                   <div 
                     className={`h-full rounded-full ${healthAndFinance.mortalityRate > 5 ? 'bg-red-500' : healthAndFinance.mortalityRate > 2 ? 'bg-orange-500' : 'bg-green-500'}`} 
-                    style={{width: `${Math.min(Number(healthAndFinance.mortalityRate) * 5, 100)}%`}} // Scale for visualization
+                    style={{width: `${Math.min(Number(healthAndFinance.mortalityRate) * 5, 100)}%`}}
                   ></div>
               </div>
           </div>
 
-          {/* Profit Margin */}
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
               <div>
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-2">
@@ -718,16 +693,15 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
               <div className="flex gap-2 mt-4">
                   <div className="flex-1 bg-green-50 rounded p-1 text-center">
                       <span className="text-[10px] text-green-700 font-bold block">REV</span>
-                      <span className="text-xs font-medium text-green-900">${(healthAndFinance.revenue/1000).toFixed(1)}k</span>
+                      <span className="text-xs font-medium text-green-900">${(Number(healthAndFinance.revenue)/1000).toFixed(1)}k</span>
                   </div>
                   <div className="flex-1 bg-red-50 rounded p-1 text-center">
                       <span className="text-[10px] text-red-700 font-bold block">EXP</span>
-                      <span className="text-xs font-medium text-red-900">${(healthAndFinance.expenses/1000).toFixed(1)}k</span>
+                      <span className="text-xs font-medium text-red-900">${(Number(healthAndFinance.expenses)/1000).toFixed(1)}k</span>
                   </div>
               </div>
           </div>
 
-          {/* Cash Balance Card */}
           <div className="bg-emerald-600 text-white p-5 rounded-xl shadow-lg flex flex-col justify-between relative overflow-hidden">
               <div className="absolute -right-4 -bottom-4 text-emerald-500 opacity-20">
                   <DollarSign size={100} />
@@ -743,9 +717,8 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
           </div>
       </div>
 
-      {/* Row 1.5: Alerts & Recent Activity */}
+      {/* Alerts & Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* System Alerts */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
               <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                   <h3 className="font-bold text-slate-900 flex items-center gap-2">
@@ -784,7 +757,6 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
               </div>
           </div>
 
-          {/* Recent Activity */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
               <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                   <h3 className="font-bold text-slate-900 flex items-center gap-2">
@@ -824,7 +796,6 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
 
       {/* Row 2: Production Metrics */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Egg Production Stats */}
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm lg:col-span-2">
               <div className="flex justify-between items-center mb-6">
                   <h3 className="font-bold text-slate-900 flex items-center gap-2">
@@ -840,14 +811,8 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
                           <span className="block text-xs text-slate-400 font-bold uppercase">This Week</span>
                           <span className="font-bold text-slate-800 text-lg">{eggProduction.week.toLocaleString()}</span>
                       </div>
-                      <div className="h-8 w-px bg-slate-100"></div>
-                      <div className="text-right">
-                          <span className="block text-xs text-slate-400 font-bold uppercase">This Month</span>
-                          <span className="font-bold text-slate-800 text-lg">{eggProduction.month.toLocaleString()}</span>
-                      </div>
                   </div>
               </div>
-              
               <div className="h-48 w-full">
                   <DashboardAreaChart 
                       data={chartsData.eggTrend}
@@ -859,9 +824,7 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
               </div>
           </div>
 
-          {/* Unit Economics & Feed */}
           <div className="space-y-6">
-              {/* Unit Cost Cards */}
               <div className="grid grid-cols-2 gap-4">
                   <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                       <div className="p-2 bg-yellow-50 rounded-lg w-fit text-yellow-600 mb-2"><Egg size={18} /></div>
@@ -875,7 +838,6 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
                   </div>
               </div>
 
-              {/* Feed Consumption */}
               <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                   <div className="flex justify-between items-start mb-4">
                       <div>
@@ -884,60 +846,17 @@ const Dashboard: React.FC<DashboardProps> = ({ flocks, inventoryItems, tasks, tr
                           </h3>
                           <p className="text-xs text-slate-500 mt-1">Today vs Standard</p>
                       </div>
-                      <span className={`px-2 py-1 text-xs font-bold rounded border ${
-                          feedStats.status === 'On Track' ? 'bg-green-50 text-green-700 border-green-200' : 
-                          feedStats.status === 'Under' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                          'bg-red-50 text-red-700 border-red-200'
-                      }`}>
-                          {feedStats.status}
-                      </span>
                   </div>
-                  
                   <div className="flex items-end gap-2 mb-1">
                       <span className="text-2xl font-bold text-slate-900">{feedStats.totalFeedToday.toLocaleString()}</span>
                       <span className="text-sm text-slate-500 mb-1">kg consumed</span>
                   </div>
                   <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mb-1">
-                      <div className="bg-orange-500 h-full rounded-full" style={{width: `${Math.min((feedStats.totalFeedToday / (feedStats.estimatedStandardKg || 1)) * 100, 100)}%`}}></div>
-                  </div>
-                  <div className="flex justify-between text-[10px] text-slate-400 font-medium">
-                      <span>0kg</span>
-                      <span>Target: ~{feedStats.estimatedStandardKg.toFixed(0)}kg</span>
+                      <div className="bg-orange-50 h-full rounded-full" style={{width: `${Math.min((feedStats.totalFeedToday / (feedStats.estimatedStandardKg || 1)) * 100, 100)}%`}}></div>
                   </div>
               </div>
           </div>
       </div>
-
-      {/* Row 3: Financial Chart & Feed Chart */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Revenue vs Expenses Chart */}
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-              <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
-                  <TrendingUp size={20} className="text-green-600" /> Financial Performance
-              </h3>
-              <div className="h-64">
-                  <FinancialLineChart 
-                      data={chartsData.financialTrend}
-                      currencySymbol={currencySymbol}
-                      height={256}
-                  />
-              </div>
-          </div>
-
-          {/* Feed Usage by Flock Chart */}
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-              <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
-                  <BarChart3 size={20} className="text-slate-600" /> Feed Usage by Flock (Today)
-              </h3>
-              <div className="h-64">
-                  <FeedBarChart 
-                      data={feedStats.flockUsage}
-                      height={256}
-                  />
-              </div>
-          </div>
-      </div>
-
     </div>
   );
 };

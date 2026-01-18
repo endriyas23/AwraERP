@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { SalesOrder, Customer, InventoryItem, Flock, OrderItem, OrderStatus, FarmProfile, AnalysisResult } from '../types';
+import { SalesOrder, Customer, InventoryItem, Flock, OrderItem, OrderStatus, FarmProfile, AnalysisResult, DailyLog } from '../types';
 import { 
   ShoppingBag, 
   Users, 
@@ -477,6 +477,8 @@ const SalesCRM: React.FC<SalesCRMProps> = ({
     const customer = customers.find(c => c.id === orderForm.customerId);
     if (!customer) return;
 
+    const todayStr = new Date().toISOString().split('T')[0];
+
     const finalOrder: SalesOrder = {
         id: editingOrderId || `ord-${Date.now()}`,
         customerId: orderForm.customerId,
@@ -499,7 +501,7 @@ const SalesCRM: React.FC<SalesCRMProps> = ({
     } else {
         onAddOrder(finalOrder);
         
-        // --- STOCK REDUCTION LOGIC ---
+        // --- STOCK & LOGS PROCESSING ---
         finalOrder.items.forEach(item => {
             // 1. Inventory Reduction
             if (item.inventoryItemId) {
@@ -508,19 +510,41 @@ const SalesCRM: React.FC<SalesCRMProps> = ({
                     onUpdateInventory({
                         ...invItem,
                         quantity: Math.max(0, invItem.quantity - item.quantity),
-                        lastUpdated: new Date().toISOString().split('T')[0]
+                        lastUpdated: todayStr
                     });
                 }
             }
 
             // 2. Flock Reduction (Live Sales)
             if (item.flockId) {
-                const flock = flocks.find(f => f.id === item.flockId);
-                if (flock) {
+                const targetFlock = flocks.find(f => f.id === item.flockId);
+                if (targetFlock) {
+                    // Find or create daily log for today to record the sale
+                    const updatedLogs = [...targetFlock.logs];
+                    const todayLogIndex = updatedLogs.findIndex(l => l.date === todayStr);
+                    
+                    if (todayLogIndex >= 0) {
+                        updatedLogs[todayLogIndex] = {
+                            ...updatedLogs[todayLogIndex],
+                            birdsSold: (updatedLogs[todayLogIndex].birdsSold || 0) + item.quantity
+                        };
+                    } else {
+                        updatedLogs.push({
+                            day: updatedLogs.length + 1,
+                            date: todayStr,
+                            mortality: 0,
+                            birdsSold: item.quantity,
+                            feedConsumedKg: 0,
+                            waterConsumedL: 0,
+                            avgWeightG: 0
+                        });
+                    }
+
                     onUpdateFlock({
-                        ...flock,
-                        currentCount: Math.max(0, flock.currentCount - item.quantity),
-                        totalSold: (flock.totalSold || 0) + item.quantity
+                        ...targetFlock,
+                        currentCount: Math.max(0, targetFlock.currentCount - item.quantity),
+                        totalSold: (targetFlock.totalSold || 0) + item.quantity,
+                        logs: updatedLogs
                     });
                 }
             }
@@ -1065,7 +1089,7 @@ const SalesCRM: React.FC<SalesCRMProps> = ({
 
                             <div className="flex justify-between items-start mb-4">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-lg">
+                                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-lg">
                                         {customer.name.substring(0, 2).toUpperCase()}
                                     </div>
                                     <div>
@@ -1632,7 +1656,7 @@ const SalesCRM: React.FC<SalesCRMProps> = ({
       {/* Delete Confirmation Modal */}
       {isDeleteConfirmOpen && itemToDelete && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in duration-200">
+           <div className="bg-white rounded-xl shadow-xl w-full max-sm p-6 text-center animate-in fade-in zoom-in duration-200">
               <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600">
                 <Trash2 size={24} />
               </div>

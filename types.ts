@@ -43,6 +43,7 @@ export interface DailyLog {
   date: string;
   mortality: number;
   mortalityReason?: string; // Cause of death
+  birdsSold?: number; // Added: Track commercial sales per day
   feedConsumedKg: number;
   waterConsumedL: number;
   avgWeightG: number;
@@ -99,7 +100,7 @@ export interface Flock {
   vatRate?: number; // Purchase VAT %
   whtRate?: number; // Purchase WHT %
   currentCount: number;
-  totalSold?: number; // Track birds sold to distinguish from mortality
+  totalSold?: number; // Added: Aggregate commercial sales tracking
   status: FlockStatus;
   logs: DailyLog[];
   healthChecklist?: HealthChecklistItem[];

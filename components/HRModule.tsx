@@ -22,8 +22,7 @@ import {
   ArrowRight,
   Edit,
   Bird,
-  Trash2,
-  Trash
+  Trash2
 } from 'lucide-react';
 
 interface HRModuleProps {
@@ -101,9 +100,9 @@ const HRModule: React.FC<HRModuleProps> = ({
       phone: '', 
       baseSalary: 0, 
       allowances: 0, 
-      deductions: 0,
-      taxRate: 10,
-      pensionRate: 8,
+      deductions: 0, 
+      taxRate: 10, 
+      pensionRate: 8, 
       status: 'ACTIVE'
     });
     setIsModalOpen(true);
@@ -336,20 +335,20 @@ const HRModule: React.FC<HRModuleProps> = ({
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
     
     return (
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden h-full flex flex-col">
+        <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 shrink-0">
            <h3 className="font-bold text-slate-800 flex items-center gap-2">
              <Calendar size={18} /> {today.toLocaleString('default', { month: 'long', year: 'numeric' })}
            </h3>
            <div className="flex gap-1">
-             <button className="p-1 hover:bg-slate-200 rounded"><ChevronLeft size={16} /></button>
-             <button className="p-1 hover:bg-slate-200 rounded"><ChevronRight size={16} /></button>
+             <button className="p-1 hover:bg-slate-200 rounded transition-colors"><ChevronLeft size={16} /></button>
+             <button className="p-1 hover:bg-slate-200 rounded transition-colors"><ChevronRight size={16} /></button>
            </div>
         </div>
-        <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50 text-xs font-bold text-slate-500 text-center py-2">
+        <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50 text-xs font-bold text-slate-500 text-center py-2 shrink-0">
            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d}>{d}</div>)}
         </div>
-        <div className="grid grid-cols-7 auto-rows-fr bg-white">
+        <div className="grid grid-cols-7 auto-rows-fr bg-white flex-1 overflow-y-auto">
            {/* Empty cells for prev month */}
            {Array.from({ length: firstDay }).map((_, i) => <div key={`empty-${i}`} className="min-h-[100px] border-b border-r border-slate-100 bg-slate-50/30"></div>)}
            
@@ -377,7 +376,7 @@ const HRModule: React.FC<HRModuleProps> = ({
                         setTaskForm({...taskForm, dueDate: dateStr});
                         setIsTaskModalOpen(true);
                     }}
-                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-primary-600"
+                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-primary-600 transition-opacity"
                   >
                     <Plus size={16} />
                   </button>
@@ -390,9 +389,9 @@ const HRModule: React.FC<HRModuleProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">HR & Operations</h1>
           <p className="text-slate-500 text-sm mt-1">Manage workforce, payroll, and daily farm tasks.</p>
@@ -415,6 +414,7 @@ const HRModule: React.FC<HRModuleProps> = ({
       </div>
 
       {/* TEAM TAB */}
+      <div className="flex-1 overflow-y-auto">
       {activeTab === 'TEAM' && (
         <div className="space-y-6">
            <div className="flex justify-between items-center">
@@ -438,7 +438,7 @@ const HRModule: React.FC<HRModuleProps> = ({
 
            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {employees.filter(e => e.name.toLowerCase().includes(searchTerm.toLowerCase())).map(emp => (
-                 <div key={emp.id} className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-md transition-shadow group relative">
+                 <div key={emp.id} className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-md transition-shadow group relative flex flex-col">
                     <div className="flex items-start justify-between mb-4">
                        <div className="flex items-center gap-3">
                           <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-lg">
@@ -454,7 +454,7 @@ const HRModule: React.FC<HRModuleProps> = ({
                        </span>
                     </div>
                     
-                    <div className="space-y-2 text-sm text-slate-600 mb-4">
+                    <div className="space-y-2 text-sm text-slate-600 mb-4 flex-1">
                        <div className="flex justify-between">
                           <span>Base Salary:</span>
                           <span className="font-medium text-slate-900">${emp.baseSalary.toLocaleString()}</span>
@@ -527,7 +527,7 @@ const HRModule: React.FC<HRModuleProps> = ({
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                        {payrollHistory.length > 0 ? payrollHistory.map(run => (
-                          <tr key={run.id} className="hover:bg-slate-50">
+                          <tr key={run.id} className="hover:bg-slate-50 transition-colors">
                              <td className="px-6 py-4 font-bold text-slate-900">{run.period}</td>
                              <td className="px-6 py-4 text-slate-500">{run.date}</td>
                              <td className="px-6 py-4">{run.employeeCount}</td>
@@ -558,7 +558,7 @@ const HRModule: React.FC<HRModuleProps> = ({
               <h2 className="text-lg font-bold text-slate-900">Operations Tasks</h2>
               <button 
                 onClick={() => openTaskModal()}
-                className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+                className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm transition-all"
               >
                 <Plus size={16} /> Assign Task
               </button>
@@ -566,39 +566,39 @@ const HRModule: React.FC<HRModuleProps> = ({
 
            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {['PENDING', 'IN_PROGRESS', 'COMPLETED'].map(status => (
-                 <div key={status} className="bg-slate-100 rounded-xl p-4">
+                 <div key={status} className="bg-slate-100 rounded-xl p-4 flex flex-col">
                     <h3 className="font-bold text-slate-700 text-xs uppercase tracking-wider mb-3 flex items-center gap-2">
                        {status === 'PENDING' ? <Clock size={14}/> : status === 'IN_PROGRESS' ? <Briefcase size={14}/> : <CheckCircle2 size={14}/>}
                        {status.replace('_', ' ')}
                        <span className="bg-slate-200 px-1.5 rounded text-[10px]">{tasks.filter(t => t.status === status).length}</span>
                     </h3>
-                    <div className="space-y-3">
+                    <div className="space-y-3 flex-1 overflow-y-auto max-h-[500px] custom-scrollbar">
                        {tasks.filter(t => t.status === status).map(task => {
                           const relatedFlock = flocks.find(f => f.id === task.relatedFlockId);
                           return (
                             <div key={task.id} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm hover:shadow-md transition-shadow group relative">
                                <div className="flex justify-between items-start mb-1">
                                   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase ${
-                                     task.priority === 'HIGH' ? 'bg-red-50 text-red-600 border-red-100' :
-                                     task.priority === 'MEDIUM' ? 'bg-orange-50 text-orange-600 border-orange-100' :
-                                     'bg-blue-50 text-blue-600 border-blue-100'
+                                     task.priority === 'HIGH' ? 'bg-red-50 text-red-700 border-red-100' :
+                                     task.priority === 'MEDIUM' ? 'bg-orange-50 text-orange-700 border-orange-100' :
+                                     'bg-blue-50 text-blue-700 border-blue-100'
                                   }`}>
                                      {task.priority}
                                   </span>
-                                  <div className="flex gap-1">
-                                    <button onClick={() => openTaskModal(task)} className="text-slate-300 hover:text-slate-600 p-1 hover:bg-slate-50 rounded">
+                                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={() => openTaskModal(task)} className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-50 rounded">
                                       <Edit size={14} />
                                     </button>
-                                    <button onClick={() => confirmDelete('TASK', task.id)} className="text-slate-300 hover:text-red-600 p-1 hover:bg-red-50 rounded">
+                                    <button onClick={() => confirmDelete('TASK', task.id)} className="text-slate-400 hover:text-red-600 p-1 hover:bg-red-50 rounded">
                                       <Trash2 size={14} />
                                     </button>
                                   </div>
                                </div>
                                <h4 className="font-bold text-slate-800 text-sm mb-1">{task.title}</h4>
-                               <p className="text-xs text-slate-500 mb-2">{task.description}</p>
+                               <p className="text-xs text-slate-500 mb-2 leading-relaxed">{task.description}</p>
                                
                                {relatedFlock && (
-                                  <div className="text-xs text-primary-600 bg-primary-50 px-2 py-1 rounded mb-2 flex items-center gap-1 w-fit">
+                                  <div className="text-xs text-primary-600 bg-primary-50 px-2 py-1 rounded mb-2 flex items-center gap-1 w-fit border border-primary-100">
                                       <Bird size={12} /> {relatedFlock.name}
                                   </div>
                                )}
@@ -611,7 +611,7 @@ const HRModule: React.FC<HRModuleProps> = ({
                                {status !== 'COMPLETED' && (
                                   <button 
                                     onClick={() => onUpdateTask({...task, status: 'COMPLETED'})}
-                                    className="w-full mt-2 py-1 text-xs border border-green-200 text-green-600 rounded hover:bg-green-50 transition-colors"
+                                    className="w-full mt-3 py-1.5 text-xs border border-green-200 text-green-600 rounded-lg hover:bg-green-50 transition-colors font-medium"
                                   >
                                      Mark Complete
                                   </button>
@@ -620,7 +620,7 @@ const HRModule: React.FC<HRModuleProps> = ({
                           );
                        })}
                        {tasks.filter(t => t.status === status).length === 0 && (
-                          <div className="text-center py-4 text-slate-400 text-xs italic">No tasks</div>
+                          <div className="text-center py-8 text-slate-400 text-xs italic">No tasks in this category</div>
                        )}
                     </div>
                  </div>
@@ -630,132 +630,139 @@ const HRModule: React.FC<HRModuleProps> = ({
       )}
 
       {/* CALENDAR TAB */}
-      {activeTab === 'CALENDAR' && renderCalendar()}
+      {activeTab === 'CALENDAR' && (
+        <div className="h-full">
+          {renderCalendar()}
+        </div>
+      )}
+      </div>
 
       {/* -- MODALS -- */}
 
       {/* Add/Edit Employee Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
-             <div className="p-6 border-b border-slate-200 flex justify-between items-center">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg flex flex-col max-h-[90vh]">
+             <div className="p-6 border-b border-slate-200 flex justify-between items-center shrink-0 bg-white z-10 rounded-t-xl">
                 <h3 className="font-bold text-lg text-slate-900">{editingEmpId ? 'Edit Employee' : 'Add New Employee'}</h3>
-                <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-full transition-colors">
                   <X size={20} />
                 </button>
              </div>
-             <form onSubmit={handleEmployeeSubmit} className="p-6 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                   <div className="col-span-2">
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
-                      <input 
-                        required
-                        type="text" 
-                        value={empForm.name}
-                        onChange={e => setEmpForm({...empForm, name: e.target.value})}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
-                      />
-                   </div>
-                   <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
-                      <select 
-                        value={empForm.role}
-                        onChange={e => setEmpForm({...empForm, role: e.target.value})}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-                      >
-                         <option>Farm Manager</option>
-                         <option>Farm Hand</option>
-                         <option>Vet Technician</option>
-                         <option>Security</option>
-                         <option>Driver</option>
-                      </select>
-                   </div>
-                   <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
-                      <input 
-                        type="tel" 
-                        value={empForm.phone}
-                        onChange={e => setEmpForm({...empForm, phone: e.target.value})}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
-                      />
-                   </div>
-                   
-                   <div className="col-span-2 border-t border-slate-100 pt-4 mt-2">
-                      <h4 className="font-bold text-sm text-slate-800 mb-3">Salary Structure</h4>
-                   </div>
+             <form onSubmit={handleEmployeeSubmit} className="flex flex-col flex-1 overflow-hidden">
+                <div className="p-6 space-y-4 overflow-y-auto flex-1 custom-scrollbar">
+                  <div className="grid grid-cols-2 gap-4">
+                     <div className="col-span-2">
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+                        <input 
+                          required
+                          type="text" 
+                          value={empForm.name}
+                          onChange={e => setEmpForm({...empForm, name: e.target.value})}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
+                        />
+                     </div>
+                     <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
+                        <select 
+                          value={empForm.role}
+                          onChange={e => setEmpForm({...empForm, role: e.target.value})}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                        >
+                           <option>Farm Manager</option>
+                           <option>Farm Hand</option>
+                           <option>Vet Technician</option>
+                           <option>Security</option>
+                           <option>Driver</option>
+                        </select>
+                     </div>
+                     <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
+                        <input 
+                          type="tel" 
+                          value={empForm.phone}
+                          onChange={e => setEmpForm({...empForm, phone: e.target.value})}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
+                        />
+                     </div>
+                     
+                     <div className="col-span-2 border-t border-slate-100 pt-4 mt-2">
+                        <h4 className="font-bold text-sm text-slate-800 mb-3">Salary Structure</h4>
+                     </div>
 
-                   <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Base Salary</label>
-                      <input 
-                        type="number" 
-                        min="0"
-                        value={empForm.baseSalary}
-                        onChange={e => setEmpForm({...empForm, baseSalary: Number(e.target.value)})}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
-                      />
-                   </div>
-                   <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Allowances</label>
-                      <input 
-                        type="number" 
-                        min="0"
-                        value={empForm.allowances}
-                        onChange={e => setEmpForm({...empForm, allowances: Number(e.target.value)})}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
-                      />
-                   </div>
-                   <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Deductions</label>
-                      <input 
-                        type="number" 
-                        min="0"
-                        value={empForm.deductions}
-                        onChange={e => setEmpForm({...empForm, deductions: Number(e.target.value)})}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
-                      />
-                   </div>
-                   <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Tax Rate (%)</label>
-                      <input 
-                        type="number" 
-                        min="0"
-                        max="100"
-                        value={empForm.taxRate}
-                        onChange={e => setEmpForm({...empForm, taxRate: Number(e.target.value)})}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
-                      />
-                   </div>
-                   <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Pension Rate (%)</label>
-                      <input 
-                        type="number" 
-                        min="0"
-                        max="100"
-                        value={empForm.pensionRate}
-                        onChange={e => setEmpForm({...empForm, pensionRate: Number(e.target.value)})}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
-                      />
-                   </div>
-                   
-                   {editingEmpId && (
-                       <div className="col-span-2">
-                          <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
-                          <select 
-                            value={empForm.status}
-                            onChange={e => setEmpForm({...empForm, status: e.target.value as any})}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-                          >
-                             <option value="ACTIVE">Active</option>
-                             <option value="INACTIVE">Inactive</option>
-                          </select>
-                       </div>
-                   )}
+                     <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Base Salary</label>
+                        <input 
+                          type="number" 
+                          min="0"
+                          value={empForm.baseSalary}
+                          onChange={e => setEmpForm({...empForm, baseSalary: Number(e.target.value)})}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
+                        />
+                     </div>
+                     <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Allowances</label>
+                        <input 
+                          type="number" 
+                          min="0"
+                          value={empForm.allowances}
+                          onChange={e => setEmpForm({...empForm, allowances: Number(e.target.value)})}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
+                        />
+                     </div>
+                     <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Deductions</label>
+                        <input 
+                          type="number" 
+                          min="0"
+                          value={empForm.deductions}
+                          onChange={e => setEmpForm({...empForm, deductions: Number(e.target.value)})}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
+                        />
+                     </div>
+                     <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">Tax Rate (%) <DollarSign size={10} /></label>
+                        <input 
+                          type="number" 
+                          min="0"
+                          max="100"
+                          value={empForm.taxRate}
+                          onChange={e => setEmpForm({...empForm, taxRate: Number(e.target.value)})}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
+                        />
+                     </div>
+                     <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">Pension Rate (%) <DollarSign size={10} /></label>
+                        <input 
+                          type="number" 
+                          min="0"
+                          max="100"
+                          value={empForm.pensionRate}
+                          onChange={e => setEmpForm({...empForm, pensionRate: Number(e.target.value)})}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
+                        />
+                     </div>
+                     
+                     {editingEmpId && (
+                         <div className="col-span-2">
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+                            <select 
+                              value={empForm.status}
+                              onChange={e => setEmpForm({...empForm, status: e.target.value as any})}
+                              className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                            >
+                               <option value="ACTIVE">Active</option>
+                               <option value="INACTIVE">Inactive</option>
+                            </select>
+                         </div>
+                     )}
+                  </div>
                 </div>
                 
-                <div className="pt-4 flex justify-end gap-3">
-                   <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg font-medium">Cancel</button>
-                   <button type="submit" className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-sm">
-                     {editingEmpId ? 'Update Employee' : 'Save Employee'}
+                <div className="p-6 border-t border-slate-100 flex justify-end gap-3 shrink-0 bg-slate-50 rounded-b-xl">
+                   <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg font-medium transition-colors">Cancel</button>
+                   <button type="submit" className="px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-sm flex items-center gap-2 transition-all">
+                     <Save size={18} /> {editingEmpId ? 'Update Employee' : 'Save Employee'}
                    </button>
                 </div>
              </form>
@@ -768,7 +775,7 @@ const HRModule: React.FC<HRModuleProps> = ({
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
            <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in duration-200">
               <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600">
-                <Trash size={24} />
+                <Trash2 size={24} />
               </div>
               <h3 className="font-bold text-lg text-slate-900 mb-2">Delete {deleteConfirm.type === 'EMPLOYEE' ? 'Employee' : 'Task'}?</h3>
               <p className="text-slate-500 text-sm mb-6">
@@ -807,7 +814,7 @@ const HRModule: React.FC<HRModuleProps> = ({
                
                {/* STEP 1: SELECTION */}
                {payrollStep === 1 && (
-                 <div className="flex-1 overflow-y-auto p-4">
+                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                     <div className="flex justify-between items-center mb-4 px-2">
                         <span className="text-sm font-bold text-slate-700">Active Staff</span>
                         <button 
@@ -819,18 +826,18 @@ const HRModule: React.FC<HRModuleProps> = ({
                     </div>
                     <div className="space-y-2">
                         {employees.filter(e => e.status === 'ACTIVE').map(emp => (
-                            <label key={emp.id} className="flex items-center gap-4 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors">
+                            <label key={emp.id} className="flex items-center gap-4 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors group">
                                 <input 
                                   type="checkbox"
                                   checked={selectedEmpIds.has(emp.id)}
                                   onChange={() => toggleEmployeeSelection(emp.id)}
                                   className="w-5 h-5 text-primary-600 rounded focus:ring-primary-500"
                                 />
-                                <div className="flex-1">
-                                    <div className="font-bold text-slate-900">{emp.name}</div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="font-bold text-slate-900 truncate">{emp.name}</div>
                                     <div className="text-xs text-slate-500">{emp.role}</div>
                                 </div>
-                                <div className="text-right">
+                                <div className="text-right flex-shrink-0">
                                     <div className="text-sm font-medium text-slate-900">${getEstimatedNet(emp).toLocaleString()}</div>
                                     <div className="text-[10px] text-slate-400">Est. Net</div>
                                 </div>
@@ -842,7 +849,7 @@ const HRModule: React.FC<HRModuleProps> = ({
 
                {/* STEP 2: SUMMARY */}
                {payrollStep === 2 && currentPayroll && (
-                 <div className="p-6 space-y-4">
+                 <div className="p-6 space-y-4 overflow-y-auto flex-1 custom-scrollbar">
                     <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
                        <div className="flex justify-between mb-2 text-sm">
                           <span className="text-slate-600">Total Employees</span>
@@ -865,14 +872,14 @@ const HRModule: React.FC<HRModuleProps> = ({
                           <span className="text-primary-600">${currentPayroll.totalNet.toLocaleString()}</span>
                        </div>
                     </div>
-                    <p className="text-xs text-slate-500 text-center">
-                       Confirming will automatically post an expense transaction to the Financial Ledger.
+                    <p className="text-xs text-slate-500 text-center leading-relaxed">
+                       Confirming will automatically post an expense transaction to the Financial Ledger and update payroll history.
                     </p>
                  </div>
                )}
 
-               <div className="p-4 border-t border-slate-200 shrink-0 flex gap-3">
-                  <button onClick={() => setIsPayrollModalOpen(false)} className="flex-1 py-3 text-slate-600 hover:bg-slate-100 rounded-lg font-bold">
+               <div className="p-4 border-t border-slate-200 shrink-0 flex gap-3 bg-slate-50 rounded-b-xl">
+                  <button onClick={() => setIsPayrollModalOpen(false)} className="flex-1 py-3 text-slate-600 hover:bg-slate-200 rounded-lg font-bold transition-colors">
                     Cancel
                   </button>
                   
@@ -880,7 +887,7 @@ const HRModule: React.FC<HRModuleProps> = ({
                       <button 
                         onClick={calculatePayroll}
                         disabled={selectedEmpIds.size === 0}
-                        className="flex-1 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-bold shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex-1 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-bold shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                       >
                         Next <ArrowRight size={16} />
                       </button>
@@ -888,13 +895,13 @@ const HRModule: React.FC<HRModuleProps> = ({
                       <div className="flex-1 flex gap-3">
                           <button 
                             onClick={() => setPayrollStep(1)}
-                            className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold"
+                            className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold transition-colors"
                           >
                             Back
                           </button>
                           <button 
                             onClick={confirmPayroll}
-                            className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold shadow-lg flex items-center justify-center gap-2"
+                            className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold shadow-lg flex items-center justify-center gap-2 transition-all"
                           >
                             Confirm <Check size={16} />
                           </button>
@@ -908,77 +915,89 @@ const HRModule: React.FC<HRModuleProps> = ({
       {/* Task Modal */}
       {isTaskModalOpen && (
          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-               <div className="p-6 border-b border-slate-200 flex justify-between items-center">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md flex flex-col max-h-[90vh]">
+               <div className="p-6 border-b border-slate-200 flex justify-between items-center shrink-0 rounded-t-xl bg-white z-10">
                   <h3 className="font-bold text-lg text-slate-900">{editingTaskId ? 'Edit Task' : 'Assign New Task'}</h3>
-                  <button onClick={() => setIsTaskModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+                  <button onClick={() => setIsTaskModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-full transition-colors"><X size={20} /></button>
                </div>
-               <form onSubmit={handleTaskSubmit} className="p-6 space-y-4">
-                  <div>
-                     <label className="block text-sm font-medium text-slate-700 mb-1">Task Title</label>
-                     <input 
-                        required
-                        type="text" 
-                        value={taskForm.title} 
-                        onChange={e => setTaskForm({...taskForm, title: e.target.value})} 
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
-                        placeholder="e.g. Clean Silo B"
-                     />
-                  </div>
-                  <div>
-                     <label className="block text-sm font-medium text-slate-700 mb-1">Assign To</label>
-                     <select 
-                        required
-                        value={taskForm.assignedToId || ''} 
-                        onChange={e => setTaskForm({...taskForm, assignedToId: e.target.value})} 
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-                     >
-                        <option value="">Select Employee...</option>
-                        {employees.filter(e => e.status === 'ACTIVE').map(e => (
-                           <option key={e.id} value={e.id}>{e.name} ({e.role})</option>
-                        ))}
-                     </select>
-                  </div>
-                  <div>
-                     <label className="block text-sm font-medium text-slate-700 mb-1">Related Flock (Optional)</label>
-                     <select 
-                        value={taskForm.relatedFlockId || ''} 
-                        onChange={e => setTaskForm({...taskForm, relatedFlockId: e.target.value})} 
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-                     >
-                        <option value="">None / General Farm Task</option>
-                        {flocks.map(f => (
-                           <option key={f.id} value={f.id}>{f.name}</option>
-                        ))}
-                     </select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Priority</label>
-                        <select 
-                           value={taskForm.priority} 
-                           onChange={e => setTaskForm({...taskForm, priority: e.target.value as any})} 
-                           className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-                        >
-                           <option value="LOW">Low</option>
-                           <option value="MEDIUM">Medium</option>
-                           <option value="HIGH">High</option>
-                        </select>
-                     </div>
-                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
-                        <input 
-                           type="date" 
-                           value={taskForm.dueDate} 
-                           onChange={e => setTaskForm({...taskForm, dueDate: e.target.value})} 
-                           className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
-                        />
-                     </div>
+               <form onSubmit={handleTaskSubmit} className="flex flex-col flex-1 overflow-hidden">
+                  <div className="p-6 space-y-4 overflow-y-auto flex-1 custom-scrollbar">
+                    <div>
+                       <label className="block text-sm font-medium text-slate-700 mb-1">Task Title</label>
+                       <input 
+                          required
+                          type="text" 
+                          value={taskForm.title} 
+                          onChange={e => setTaskForm({...taskForm, title: e.target.value})} 
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
+                          placeholder="e.g. Clean Silo B"
+                       />
+                    </div>
+                    <div>
+                       <label className="block text-sm font-medium text-slate-700 mb-1">Assign To</label>
+                       <select 
+                          required
+                          value={taskForm.assignedToId || ''} 
+                          onChange={e => setTaskForm({...taskForm, assignedToId: e.target.value})} 
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                       >
+                          <option value="">Select Employee...</option>
+                          {employees.filter(e => e.status === 'ACTIVE').map(e => (
+                             <option key={e.id} value={e.id}>{e.name} ({e.role})</option>
+                          ))}
+                       </select>
+                    </div>
+                    <div>
+                       <label className="block text-sm font-medium text-slate-700 mb-1">Related Flock (Optional)</label>
+                       <select 
+                          value={taskForm.relatedFlockId || ''} 
+                          onChange={e => setTaskForm({...taskForm, relatedFlockId: e.target.value})} 
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                       >
+                          <option value="">None / General Farm Task</option>
+                          {flocks.map(f => (
+                             <option key={f.id} value={f.id}>{f.name}</option>
+                          ))}
+                       </select>
+                    </div>
+                    <div>
+                       <label className="block text-sm font-medium text-slate-700 mb-1">Description (Optional)</label>
+                       <textarea 
+                          value={taskForm.description || ''} 
+                          onChange={e => setTaskForm({...taskForm, description: e.target.value})} 
+                          rows={2}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                          placeholder="Provide more details about the task..."
+                       />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                       <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-1">Priority</label>
+                          <select 
+                             value={taskForm.priority} 
+                             onChange={e => setTaskForm({...taskForm, priority: e.target.value as any})} 
+                             className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                          >
+                             <option value="LOW">Low</option>
+                             <option value="MEDIUM">Medium</option>
+                             <option value="HIGH">High</option>
+                          </select>
+                       </div>
+                       <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
+                          <input 
+                             type="date" 
+                             value={taskForm.dueDate} 
+                             onChange={e => setTaskForm({...taskForm, dueDate: e.target.value})} 
+                             className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                       </div>
+                    </div>
                   </div>
                   
-                  <div className="pt-4 flex justify-end gap-3">
-                     <button type="button" onClick={() => setIsTaskModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg font-medium">Cancel</button>
-                     <button type="submit" className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-sm">{editingTaskId ? 'Update Task' : 'Assign Task'}</button>
+                  <div className="p-6 border-t border-slate-100 flex justify-end gap-3 shrink-0 bg-slate-50 rounded-b-xl">
+                     <button type="button" onClick={() => setIsTaskModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg font-medium transition-colors">Cancel</button>
+                     <button type="submit" className="px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-sm transition-all">{editingTaskId ? 'Update Task' : 'Assign Task'}</button>
                   </div>
                </form>
             </div>

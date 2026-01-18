@@ -43,7 +43,8 @@ import {
   Stethoscope,
   Wheat,
   PackageCheck,
-  Package
+  Package,
+  ShoppingBag
 } from 'lucide-react';
 import EggProductionModule from './EggProductionModule';
 import { analyzeFlockPerformance, diagnoseBirdHealth } from '../services/geminiService';
@@ -333,18 +334,22 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
     const sortedLogs = [...flock.logs].sort((a, b) => a.day - b.day);
     
     let cumMortality = 0;
+    let cumSold = 0;
     
     // Process Logs
     const processed = sortedLogs.map(log => {
-        // Population at START of day (before today's mortality)
-        const startOfDayPop = flock.initialCount - cumMortality;
+        // Population at START of day (before today's changes)
+        const startOfDayPop = flock.initialCount - cumMortality - cumSold;
         
-        // Update cumulative for next day
+        // Update cumulative for next day tracking
         cumMortality += log.mortality;
+        cumSold += (log.birdsSold || 0);
         
-        // Metrics
+        // Mortality Metrics - Biological loss only
         const dailyMortalityRate = startOfDayPop > 0 ? (log.mortality / startOfDayPop) * 100 : 0;
         const cumulativeMortalityRate = flock.initialCount > 0 ? (cumMortality / flock.initialCount) * 100 : 0;
+        
+        // Commercial Metrics
         const henDayPct = startOfDayPop > 0 ? ((log.eggProduction || 0) / startOfDayPop) * 100 : 0;
         
         return {
@@ -352,6 +357,7 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
             label: `Day ${log.day}`,
             startOfDayPop,
             cumulativeMortality: cumMortality,
+            cumulativeSold: cumSold,
             dailyMortalityRate,
             cumulativeMortalityRate,
             henDayPct
@@ -367,7 +373,8 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
         dailyProduction: latest.eggProduction || 0,
         avgWeight: latest.avgWeightG || 0,
         henDayPct: latest.henDayPct || 0,
-        mortalityRate: latest.cumulativeMortalityRate || 0,
+        mortalityRate: latest.cumulativeMortalityRate || (flock.initialCount > 0 ? (cumMortality / flock.initialCount) * 100 : 0),
+        totalSold: cumSold,
         avgHenDay7d: last7Days.length > 0 ? last7Days.reduce((a,b) => a + b.henDayPct, 0) / last7Days.length : 0
     };
 
@@ -439,14 +446,13 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
         }
     }
 
-    // 2. Inventory Addition (Egg Production) - Automated Linking
+    // 2. Inventory Addition (Egg Production)
     if (flock.type === BirdType.LAYER) {
         const totalEggs = Number(logFormData.eggProduction);
         const damaged = Number(logFormData.eggsDamaged);
         const netStockable = Math.max(0, totalEggs - damaged);
 
         if (netStockable > 0) {
-            // Find existing 'Table Eggs' or generic 'Eggs' inventory item
             const eggItem = inventoryItems.find(i => 
                 i.name.toLowerCase().includes('table egg') || 
                 (i.name.toLowerCase() === 'eggs' && i.category === InventoryCategory.OTHER)
@@ -458,8 +464,6 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
                     quantity: eggItem.quantity + netStockable,
                     lastUpdated: new Date().toISOString().split('T')[0]
                 });
-            } else {
-                console.warn("Automated stock update skipped: No 'Table Eggs' inventory item found.");
             }
         }
     }
@@ -470,6 +474,7 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
       date: logFormData.date,
       mortality: Number(logFormData.mortality),
       mortalityReason: logFormData.mortalityReason,
+      birdsSold: 0, // Daily log entry from modal usually doesn't trigger sales
       feedConsumedKg: Number(logFormData.feedConsumedKg),
       waterConsumedL: Number(logFormData.waterConsumedL),
       avgWeightG: Number(logFormData.avgWeightG),
@@ -497,8 +502,6 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
   };
 
   const recentLogs = [...flock.logs].reverse();
-
-  // Find selected feed item details for display
   const selectedFeed = inventoryItems.find(i => i.id === logFormData.selectedFeedId);
 
   return (
@@ -593,29 +596,24 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
                {/* KPI Cards */}
                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Daily Production</p>
+                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Population</p>
                      <h3 className="text-2xl font-bold text-slate-900 mt-1">
-                        {flock.type === BirdType.LAYER 
-                            ? `${metrics.dailyProduction.toLocaleString()} eggs` 
-                            : `${metrics.avgWeight.toLocaleString()} g`
-                        }
+                        {flock.currentCount.toLocaleString()} <span className="text-sm font-normal text-slate-400">birds</span>
                      </h3>
-                     <p className="text-xs text-slate-400 mt-1">Latest log entry</p>
+                     <p className="text-xs text-slate-400 mt-1">Commercial Sales: {metrics.totalSold.toLocaleString()}</p>
                   </div>
                   
                   <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        {flock.type === BirdType.LAYER ? 'Hen-Day %' : 'Feed Conversion'}
+                        {flock.type === BirdType.LAYER ? 'Hen-Day %' : 'Avg Weight'}
                      </p>
-                     <h3 className={`text-2xl font-bold mt-1 ${metrics.henDayPct > 90 ? 'text-green-600' : 'text-blue-600'}`}>
+                     <h3 className="text-2xl font-bold mt-1 text-blue-600">
                         {flock.type === BirdType.LAYER 
                             ? `${metrics.henDayPct.toFixed(1)}%` 
-                            : '-' // FCR Logic placeholder
+                            : `${metrics.avgWeight.toLocaleString()} g`
                         }
                      </h3>
-                     <p className="text-xs text-slate-400 mt-1">
-                        {flock.type === BirdType.LAYER ? `7-Day Avg: ${metrics.avgHenDay7d.toFixed(1)}%` : 'Ratio'}
-                     </p>
+                     <p className="text-xs text-slate-400 mt-1">Efficiency Indicator</p>
                   </div>
 
                   <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
@@ -623,33 +621,23 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
                      <h3 className={`text-2xl font-bold mt-1 ${metrics.mortalityRate > 5 ? 'text-red-600' : 'text-slate-900'}`}>
                         {metrics.mortalityRate.toFixed(2)}%
                      </h3>
-                     <p className="text-xs text-slate-400 mt-1">Cumulative loss</p>
+                     <p className="text-xs text-slate-400 mt-1">Biological Loss Only</p>
                   </div>
 
-                  {/* Feed Availability Widget - New Feature */}
                   <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Feed Available</p>
-                     <div className="mt-2 space-y-1">
-                        {feedItems.length > 0 ? feedItems.slice(0, 2).map(f => (
-                            <div key={f.id} className="flex justify-between items-center text-sm">
-                                <span className="text-slate-600 truncate max-w-[100px]">{f.name}</span>
-                                <span className={`font-bold ${f.quantity <= f.minLevel ? 'text-red-600' : 'text-slate-900'}`}>
-                                    {f.quantity.toLocaleString()} {f.unit}
-                                </span>
-                            </div>
-                        )) : <div className="text-sm text-slate-400">No compatible feed</div>}
-                        {feedItems.length > 2 && (
-                            <div className="text-[10px] text-primary-600 pt-1">+ {feedItems.length - 2} more</div>
-                        )}
+                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Sales</p>
+                     <div className="mt-1 flex items-center gap-2">
+                        <h3 className="text-2xl font-bold text-green-600">{metrics.totalSold.toLocaleString()}</h3>
+                        <ShoppingBag size={18} className="text-green-500 opacity-50" />
                      </div>
+                     <p className="text-xs text-slate-400 mt-1">Removed commercially</p>
                   </div>
                </div>
 
                {/* Main Charts Row */}
                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                   {/* Production vs Age Curve */}
                    <PerformanceChart 
-                       title={flock.type === BirdType.LAYER ? "Egg Production vs Flock Age" : "Weight Gain vs Age"}
+                       title={flock.type === BirdType.LAYER ? "Egg Production Trends" : "Weight Gain Curve"}
                        data={chartData}
                        dataKey={flock.type === BirdType.LAYER ? "eggProduction" : "avgWeightG"}
                        labelKey="label"
@@ -659,21 +647,18 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
                        showMovingAverage={true}
                    />
 
-                   {/* Production Volume Bar Chart */}
                    <PerformanceChart 
-                       title="Daily Production Volume"
+                       title="Daily Bird Reduction (Sale vs Death)"
                        data={chartData}
-                       dataKey={flock.type === BirdType.LAYER ? "eggProduction" : "feedConsumedKg"}
+                       dataKey="birdsSold" // This could be more advanced with stacked bars, showing simple sold here
                        labelKey="label"
-                       unit={flock.type === BirdType.LAYER ? "eggs" : "kg feed"}
+                       unit="birds"
                        type="bar"
-                       color={flock.type === BirdType.LAYER ? "#eab308" : "#f97316"}
+                       color="#10b981"
                    />
                </div>
 
-               {/* Secondary Metrics Row */}
                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                   {/* Mortality Trend */}
                    <PerformanceChart 
                        title="Mortality Trend"
                        data={chartData}
@@ -685,9 +670,8 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
                        height={250}
                    />
 
-                   {/* Cumulative Mortality Rate */}
                    <PerformanceChart 
-                       title="Cumulative Mortality Rate"
+                       title="Cumulative Mortality %"
                        data={chartData}
                        dataKey="cumulativeMortalityRate"
                        labelKey="label"
@@ -709,9 +693,9 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
                         <tr>
                            <th className="px-6 py-4">Day</th>
                            <th className="px-6 py-4">Date</th>
-                           <th className="px-6 py-4">Mortality</th>
+                           <th className="px-6 py-4 text-red-600">Mortality</th>
+                           <th className="px-6 py-4 text-green-600">Sales</th>
                            <th className="px-6 py-4">Feed (kg)</th>
-                           <th className="px-6 py-4">Water (L)</th>
                            <th className="px-6 py-4">Weight (g)</th>
                            {flock.type === BirdType.LAYER && <th className="px-6 py-4">Eggs</th>}
                            <th className="px-6 py-4">Notes</th>
@@ -729,20 +713,16 @@ const FlockDetail: React.FC<FlockDetailProps> = ({
                                       <button 
                                         onClick={() => setViewProofUrl(log.mortalityImage)}
                                         className="text-slate-400 hover:text-primary-600 transition-colors"
-                                        title="View Proof"
                                       >
                                           <ImageIcon size={16} />
                                       </button>
                                   )}
-                                  {log.mortalityReason && (
-                                      <span className="text-xs text-slate-400 truncate max-w-[100px] block" title={log.mortalityReason}>
-                                          ({log.mortalityReason})
-                                      </span>
-                                  )}
                                 </div>
                               </td>
+                              <td className="px-6 py-4 text-green-600 font-bold">
+                                 {log.birdsSold || '-'}
+                              </td>
                               <td className="px-6 py-4 text-slate-600">{log.feedConsumedKg}</td>
-                              <td className="px-6 py-4 text-slate-600">{log.waterConsumedL}</td>
                               <td className="px-6 py-4 text-slate-600">{log.avgWeightG}</td>
                               {flock.type === BirdType.LAYER && (
                                 <td className="px-6 py-4 text-yellow-600 font-medium">{log.eggProduction || '-'}</td>
